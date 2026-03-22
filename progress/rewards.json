@@ -49,5 +49,19 @@
         "gems": [6, 12]
       }
     }
+  },
+  "weekendEvent": {
+    "enabled": true,
+    "days": [0, 6],
+    "name": "Lucky Streak Weekend",
+    "multiplierCapBonus": 0.6,
+    "chestWeightBonus": {
+      "common": -12,
+      "rare": 6,
+      "epic": 4,
+      "legendary": 2
+    },
+    "chestCoinBonus": 25,
+    "tagline": "Fortune favors consistency. Weekend rewards are juiced."
   }
 }

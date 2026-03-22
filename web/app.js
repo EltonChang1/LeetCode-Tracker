@@ -56,6 +56,15 @@ const fallbackRewardsConfig = {
       legendary: { coins: [350, 550], tokens: [5, 10], gems: [6, 12] },
     },
   },
+  weekendEvent: {
+    enabled: true,
+    days: [0, 6],
+    name: 'Lucky Streak Weekend',
+    multiplierCapBonus: 0.6,
+    chestWeightBonus: { common: -12, rare: 6, epic: 4, legendary: 2 },
+    chestCoinBonus: 25,
+    tagline: 'Fortune favors consistency. Weekend rewards are juiced.',
+  },
 };
 
 const fallbackRewardsState = {
@@ -327,10 +336,34 @@ function getStreakMultiplier(currentStreak, rewardsConfig) {
   const profile = getIntensityProfile(rewardsConfig);
   const steps = Math.floor(Math.max(0, currentStreak) / Math.max(1, profile.streakPerStep || 3));
   const raw = 1 + steps * (profile.multiplierStep || 0.1);
+  const event = luckyWeekendEvent(rewardsConfig);
+  const cap = (profile.maxMultiplier || 2) + (event.active ? Number(event.multiplierCapBonus || 0) : 0);
   return {
     intensity: profile.key,
-    multiplier: Number(Math.min(profile.maxMultiplier || 2, raw).toFixed(2)),
+    cap: Number(cap.toFixed(2)),
+    multiplier: Number(Math.min(cap, raw).toFixed(2)),
   };
+}
+
+function luckyWeekendEvent(rewardsConfig) {
+  const event = rewardsConfig.weekendEvent || fallbackRewardsConfig.weekendEvent;
+  const days = Array.isArray(event.days) && event.days.length ? event.days : [0, 6];
+  const active = Boolean(event.enabled) && days.includes(new Date().getDay());
+  return {
+    ...event,
+    active,
+  };
+}
+
+function boostedWeights(weights, event) {
+  const source = { ...weights };
+  if (!event.active) return source;
+  const bonus = event.chestWeightBonus || {};
+  const result = {};
+  for (const keyName of Object.keys(source)) {
+    result[keyName] = Math.max(1, Number(source[keyName]) + Number(bonus[keyName] || 0));
+  }
+  return result;
 }
 
 function pickWeightedRarity(weights, seedText) {
@@ -349,14 +382,16 @@ function pickWeightedRarity(weights, seedText) {
 function chestPreview(entries, currentStreak, rewardsConfig) {
   const today = todayKey();
   const profile = getIntensityProfile(rewardsConfig);
+  const event = luckyWeekendEvent(rewardsConfig);
   const chest = rewardsConfig.chest || fallbackRewardsConfig.chest;
-  const rarity = pickWeightedRarity(chest.rarityWeights, `${today}-${entries.length}-${currentStreak}-${profile.key}`);
+  const rarity = pickWeightedRarity(boostedWeights(chest.rarityWeights, event), `${today}-${entries.length}-${currentStreak}-${profile.key}`);
   const rewardRange = chest.rewards[rarity] || chest.rewards.common;
   const boost = Math.max(0, profile.baseChestBoost || 0);
   return {
     rarity,
+    eventActive: event.active,
     rewards: {
-      coins: pseudoRandomNumber(`${today}-${rarity}-coins`, rewardRange.coins[0], rewardRange.coins[1]) + boost * 10,
+      coins: pseudoRandomNumber(`${today}-${rarity}-coins`, rewardRange.coins[0], rewardRange.coins[1]) + boost * 10 + (event.active ? Number(event.chestCoinBonus || 0) : 0),
       tokens: pseudoRandomNumber(`${today}-${rarity}-tokens`, rewardRange.tokens[0], rewardRange.tokens[1]) + Math.floor(boost / 2),
       gems: pseudoRandomNumber(`${today}-${rarity}-gems`, rewardRange.gems[0], rewardRange.gems[1]),
     },
@@ -594,10 +629,11 @@ function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewar
   const multiplier = getStreakMultiplier(stats.currentStreak, rewardsConfig);
   const chest = chestStatus(entries, stats.currentStreak, rewardsConfig, rewardsState);
   const chestLoot = chest.claimed ? chest.claim : chest.preview;
+  const event = luckyWeekendEvent(rewardsConfig);
 
-  document.getElementById('multiplierLine').textContent = `x${multiplier.multiplier} [${multiplier.intensity}]`;
+  document.getElementById('multiplierLine').textContent = `x${multiplier.multiplier} [${multiplier.intensity}]${event.active ? ` · 🍀 ${event.name}` : ''}`;
   document.getElementById('boostedXpLine').textContent = `Boosted XP: ${Math.round(stats.xp * multiplier.multiplier)} (base ${stats.xp})`;
-  document.getElementById('chestLine').textContent = `${chest.claimed ? 'Claimed' : 'Ready'} · ${chestLoot.rarity} · +${chestLoot.rewards.coins}c +${chestLoot.rewards.tokens}t +${chestLoot.rewards.gems}g`;
+  document.getElementById('chestLine').textContent = `${chest.claimed ? 'Claimed' : 'Ready'} · ${chestLoot.rarity} · +${chestLoot.rewards.coins}c +${chestLoot.rewards.tokens}t +${chestLoot.rewards.gems}g${event.active ? ' · weekend boosted' : ''}`;
   document.getElementById('walletLine').textContent = `Wallet: ${chest.wallet.coins} coins · ${chest.wallet.tokens} tokens · ${chest.wallet.gems} gems`;
 }
 

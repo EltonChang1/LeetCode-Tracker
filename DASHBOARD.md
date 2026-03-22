@@ -16,10 +16,13 @@
 
 ## Rewards Engine
 - Intensity: **balanced**
-- Win Streak Multiplier: **x1**
+- Win Streak Multiplier: **x1** (cap x2.8)
 - Boosted XP (effective): **0**
+- Lucky Weekend Event: **ACTIVE (Lucky Streak Weekend)**
+- Event Bonus: +25 chest coins, multiplier cap +0.6, boosted rarity odds
+- Event Tagline: Fortune favors consistency. Weekend rewards are juiced.
 - Daily Chest: **Available**
-- Chest Preview: **common** (+85 coins, +1 tokens, +0 gems)
+- Chest Preview: **common** (+110 coins, +1 tokens, +0 gems)
 - Wallet: **0 coins / 0 tokens / 0 gems**
 
 ## Seasonal League

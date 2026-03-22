@@ -96,6 +96,20 @@ const rewardDefaults = {
       },
     },
   },
+  weekendEvent: {
+    enabled: true,
+    days: [0, 6],
+    name: 'Lucky Streak Weekend',
+    multiplierCapBonus: 0.6,
+    chestWeightBonus: {
+      common: -12,
+      rare: 6,
+      epic: 4,
+      legendary: 2,
+    },
+    chestCoinBonus: 25,
+    tagline: 'Fortune favors consistency. Weekend rewards are juiced.',
+  },
 };
 
 const rewardStateDefaults = {
@@ -272,6 +286,10 @@ function readRewardsConfig() {
           ...rewardDefaults.chest.rewards,
           ...((parsed.chest && parsed.chest.rewards) || {}),
         },
+      },
+      weekendEvent: {
+        ...rewardDefaults.weekendEvent,
+        ...(parsed.weekendEvent || {}),
       },
     };
   } catch {
@@ -629,13 +647,42 @@ function getIntensityProfile(rewardConfig) {
   };
 }
 
-function getStreakMultiplier(currentStreak, rewardConfig) {
+function getLuckyWeekendEvent(rewardConfig, dateObj = toDate(getToday())) {
+  const event = rewardConfig.weekendEvent || rewardDefaults.weekendEvent;
+  const days = Array.isArray(event.days) && event.days.length ? event.days : [0, 6];
+  const active = Boolean(event.enabled) && days.includes(dateObj.getDay());
+  return {
+    ...event,
+    active,
+  };
+}
+
+function getBoostedWeights(weights, event) {
+  const source = {
+    ...weights,
+  };
+
+  if (!event.active) {
+    return source;
+  }
+
+  const bonus = event.chestWeightBonus || {};
+  const result = {};
+  for (const rarity of Object.keys(source)) {
+    result[rarity] = Math.max(1, Number(source[rarity]) + Number(bonus[rarity] || 0));
+  }
+  return result;
+}
+
+function getStreakMultiplier(currentStreak, rewardConfig, event = getLuckyWeekendEvent(rewardConfig)) {
   const profile = getIntensityProfile(rewardConfig);
   const steps = Math.floor(Math.max(0, currentStreak) / Math.max(1, profile.streakPerStep || 3));
   const raw = 1 + steps * (profile.multiplierStep || 0.1);
-  const multiplier = Math.min(profile.maxMultiplier || 2, raw);
+  const cap = (profile.maxMultiplier || 2) + (event.active ? Number(event.multiplierCapBonus || 0) : 0);
+  const multiplier = Math.min(cap, raw);
   return {
     intensity: profile.key,
+    cap: Number(cap.toFixed(2)),
     multiplier: Number(multiplier.toFixed(2)),
   };
 }
@@ -656,20 +703,25 @@ function pickWeightedRarity(weights, seedText) {
   return entries[entries.length - 1][0];
 }
 
-function rollDailyChest(todayKey, entries, stats, rewardConfig) {
+function rollDailyChest(todayKey, entries, stats, rewardConfig, event = getLuckyWeekendEvent(rewardConfig)) {
   const profile = getIntensityProfile(rewardConfig);
   const chest = rewardConfig.chest || rewardDefaults.chest;
-  const rarity = pickWeightedRarity(chest.rarityWeights, `${todayKey}-${entries.length}-${stats.currentStreak}-${profile.key}`);
+  const boostedWeights = getBoostedWeights(chest.rarityWeights, event);
+  const rarity = pickWeightedRarity(boostedWeights, `${todayKey}-${entries.length}-${stats.currentStreak}-${profile.key}`);
   const rewardRange = chest.rewards[rarity] || chest.rewards.common;
 
   const boost = Math.max(0, profile.baseChestBoost || 0);
 
-  const coins = pseudoRandomNumber(`${todayKey}-${rarity}-coins`, rewardRange.coins[0], rewardRange.coins[1]) + boost * 10;
+  const coins =
+    pseudoRandomNumber(`${todayKey}-${rarity}-coins`, rewardRange.coins[0], rewardRange.coins[1]) +
+    boost * 10 +
+    (event.active ? Number(event.chestCoinBonus || 0) : 0);
   const tokens = pseudoRandomNumber(`${todayKey}-${rarity}-tokens`, rewardRange.tokens[0], rewardRange.tokens[1]) + Math.floor(boost / 2);
   const gems = pseudoRandomNumber(`${todayKey}-${rarity}-gems`, rewardRange.gems[0], rewardRange.gems[1]);
 
   return {
     rarity,
+    eventActive: event.active,
     rewards: {
       coins,
       tokens,
@@ -678,9 +730,9 @@ function rollDailyChest(todayKey, entries, stats, rewardConfig) {
   };
 }
 
-function getDailyChestStatus(entries, stats, rewardConfig, rewardState, dateKey = getToday()) {
+function getDailyChestStatus(entries, stats, rewardConfig, rewardState, dateKey = getToday(), event = getLuckyWeekendEvent(rewardConfig)) {
   const existing = rewardState.claims[dateKey];
-  const preview = rollDailyChest(dateKey, entries, stats, rewardConfig);
+  const preview = rollDailyChest(dateKey, entries, stats, rewardConfig, event);
   return {
     date: dateKey,
     claimed: Boolean(existing),
@@ -690,7 +742,7 @@ function getDailyChestStatus(entries, stats, rewardConfig, rewardState, dateKey 
   };
 }
 
-function openDailyChest(entries, stats, rewardConfig, rewardState, dateKey = getToday()) {
+function openDailyChest(entries, stats, rewardConfig, rewardState, dateKey = getToday(), event = getLuckyWeekendEvent(rewardConfig)) {
   if (rewardState.claims[dateKey]) {
     return {
       alreadyClaimed: true,
@@ -699,7 +751,7 @@ function openDailyChest(entries, stats, rewardConfig, rewardState, dateKey = get
     };
   }
 
-  const rolled = rollDailyChest(dateKey, entries, stats, rewardConfig);
+  const rolled = rollDailyChest(dateKey, entries, stats, rewardConfig, event);
   const claim = {
     ...rolled,
     claimedAt: new Date().toISOString(),
@@ -937,9 +989,10 @@ function calculateStats(entries) {
   const raid = getRaidStatus(entries, today);
   const rewardsConfig = readRewardsConfig();
   const rewardsState = readRewardsState();
-  const streakBonus = getStreakMultiplier(currentStreak, rewardsConfig);
+  const luckyEvent = getLuckyWeekendEvent(rewardsConfig, today);
+  const streakBonus = getStreakMultiplier(currentStreak, rewardsConfig, luckyEvent);
   const boostedXp = Math.round(xp * streakBonus.multiplier);
-  const chest = getDailyChestStatus(entries, { currentStreak }, rewardsConfig, rewardsState);
+  const chest = getDailyChestStatus(entries, { currentStreak }, rewardsConfig, rewardsState, getToday(), luckyEvent);
 
   return {
     total,
@@ -957,6 +1010,7 @@ function calculateStats(entries) {
     streakBonus,
     boostedXp,
     chest,
+    luckyEvent,
     elo,
     season,
     raid,
@@ -1055,7 +1109,7 @@ function renderDashboard(entries) {
     ? `## Weekly Raid Boss (Solo-Simulated Team)\n- Raid: **${stats.raid.boss.name}** [${stats.raid.boss.element}]\n- Week: **${stats.raid.weekRange}**\n- HP: **${stats.raid.hp}** | Damage: **${stats.raid.totalDamage}** | HP Left: **${stats.raid.hpLeft}**\n- Clear: **${stats.raid.clearPct}%** | Reward Tier: **${stats.raid.rewardTier}**\n- You: **${stats.raid.playerDamage} dmg** | Team: **${stats.raid.teamDamage} dmg**\n- Teammates: ${stats.raid.team.map((mate) => `${mate.name} ${mate.damage}`).join(', ')}\n\n`
     : '';
 
-  const rewardsSection = `## Rewards Engine\n- Intensity: **${stats.streakBonus.intensity}**\n- Win Streak Multiplier: **x${stats.streakBonus.multiplier}**\n- Boosted XP (effective): **${stats.boostedXp}**\n- Daily Chest: **${stats.chest.claimed ? 'Claimed' : 'Available'}**\n- Chest ${stats.chest.claimed ? 'Loot' : 'Preview'}: **${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rarity}** (+${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.coins} coins, +${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.tokens} tokens, +${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.gems} gems)\n- Wallet: **${stats.chest.wallet.coins} coins / ${stats.chest.wallet.tokens} tokens / ${stats.chest.wallet.gems} gems**\n\n`;
+  const rewardsSection = `## Rewards Engine\n- Intensity: **${stats.streakBonus.intensity}**\n- Win Streak Multiplier: **x${stats.streakBonus.multiplier}** (cap x${stats.streakBonus.cap})\n- Boosted XP (effective): **${stats.boostedXp}**\n- Lucky Weekend Event: **${stats.luckyEvent.active ? `ACTIVE (${stats.luckyEvent.name})` : 'Inactive'}**\n${stats.luckyEvent.active ? `- Event Bonus: +${stats.luckyEvent.chestCoinBonus} chest coins, multiplier cap +${stats.luckyEvent.multiplierCapBonus}, boosted rarity odds\n- Event Tagline: ${stats.luckyEvent.tagline}\n` : ''}- Daily Chest: **${stats.chest.claimed ? 'Claimed' : 'Available'}**\n- Chest ${stats.chest.claimed ? 'Loot' : 'Preview'}: **${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rarity}** (+${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.coins} coins, +${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.tokens} tokens, +${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.gems} gems)\n- Wallet: **${stats.chest.wallet.coins} coins / ${stats.chest.wallet.tokens} tokens / ${stats.chest.wallet.gems} gems**\n\n`;
 
   const markdown = `# LeetCode Progress Dashboard\n\n## Snapshot\n- Total Solved: **${stats.total}**\n- Solved Days: **${stats.solvedDays}**\n- Current Streak: **${stats.currentStreak} day(s)**\n- Longest Streak: **${stats.longestStreak} day(s)**\n- XP: **${stats.xp}**\n- Level: **${stats.level}**\n- Streak Shield: **${stats.freezeMissesUsed}/${stats.freezeMissesAllowed} miss used** (1 miss allowed per 14 days)\n\n## Daily Mission\n- ${mission.title}\n- ${mission.detail}\n- Nudge: ${nudge}\n\n${rewardsSection}${leagueSection}${bossSection}${raidSection}## Consistency Score\n- Last 7 active days: **${stats.weekActiveDays}/7**\n- Consistency score: **${stats.consistencyScore}/100**\n\n## Difficulty Breakdown\n- Easy: **${stats.byDifficulty.easy}**\n- Medium: **${stats.byDifficulty.medium}**\n- Hard: **${stats.byDifficulty.hard}**\n\n## 14-Day Consistency\n${renderWeekBar(entries)}\n\n## Achievements\n${achievements.map((a) => `- ${a}`).join('\n')}\n\n## Recent Solves\n${recentLines}\n\n---\nAuto-generated by \`npm run lc:dashboard\`.\n`;
 
@@ -1119,6 +1173,9 @@ function addEntry(args) {
   console.log(`📁 Solution file: ${entry.solutionPath}`);
   console.log(`🔥 Current streak: ${stats.currentStreak} day(s)`);
   console.log(`✨ Win streak multiplier: x${stats.streakBonus.multiplier} [${stats.streakBonus.intensity}]`);
+  if (stats.luckyEvent.active) {
+    console.log(`🍀 ${stats.luckyEvent.name} ACTIVE: rarity boost + cap +${stats.luckyEvent.multiplierCapBonus}`);
+  }
   console.log(`🏁 League: ${stats.season.tier} (${stats.season.points} pts) | ELO ${stats.elo.rating} (${stats.elo.rank})`);
   if (stats.elo.nextRank) {
     console.log(`📈 Next rank ${stats.elo.nextRank} in ${stats.elo.toNext} rating`);
@@ -1152,6 +1209,9 @@ function showToday(entries) {
   console.log(`🏁 Longest streak: ${stats.longestStreak}`);
   console.log(`🛡️ Streak shield usage: ${stats.freezeMissesUsed}/${stats.freezeMissesAllowed} (1 miss per 14 days)`);
   console.log(`✨ Win streak multiplier: x${stats.streakBonus.multiplier} [${stats.streakBonus.intensity}]`);
+  if (stats.luckyEvent.active) {
+    console.log(`🍀 Event active: ${stats.luckyEvent.name}`);
+  }
   console.log(`⭐ XP: ${stats.xp} | Level: ${stats.level}`);
   console.log(`💎 Wallet: ${stats.chest.wallet.coins}c/${stats.chest.wallet.tokens}t/${stats.chest.wallet.gems}g`);
   console.log(`📈 Consistency score: ${stats.consistencyScore}/100`);
@@ -1183,6 +1243,9 @@ function showMission(entries) {
   console.log(`- Current streak: ${stats.currentStreak}`);
   console.log(`- Shield usage: ${stats.freezeMissesUsed}/${stats.freezeMissesAllowed}`);
   console.log(`- Multiplier: x${stats.streakBonus.multiplier} [${stats.streakBonus.intensity}]`);
+  if (stats.luckyEvent.active) {
+    console.log(`- Event: ${stats.luckyEvent.name} is active`);
+  }
   console.log(`- Daily chest: ${stats.chest.claimed ? 'claimed' : 'ready to open'}`);
   if (bossStatus) {
     console.log(`- Boss: ${bossStatus.boss.name} [${bossStatus.achievedTier ? bossStatus.achievedTier.name : 'Unranked'}]`);
@@ -1259,14 +1322,18 @@ function showChest(entries, args) {
   const stats = calculateStats(entries);
   const rewardsConfig = readRewardsConfig();
   const rewardsState = readRewardsState();
+  const luckyEvent = getLuckyWeekendEvent(rewardsConfig);
   const open = Boolean(args.open);
 
   if (open) {
-    const result = openDailyChest(entries, stats, rewardsConfig, rewardsState);
+    const result = openDailyChest(entries, stats, rewardsConfig, rewardsState, getToday(), luckyEvent);
     if (result.alreadyClaimed) {
       console.log('🎁 Daily chest already claimed today.');
     } else {
       console.log('🎁 Daily chest opened!');
+    }
+    if (luckyEvent.active) {
+      console.log(`🍀 ${luckyEvent.name} applied`);
     }
     console.log(`- Rarity: ${result.chest.rarity}`);
     console.log(`- Loot: +${result.chest.rewards.coins} coins, +${result.chest.rewards.tokens} tokens, +${result.chest.rewards.gems} gems`);
@@ -1274,13 +1341,14 @@ function showChest(entries, args) {
     return;
   }
 
-  const chest = getDailyChestStatus(entries, stats, rewardsConfig, rewardsState);
+  const chest = getDailyChestStatus(entries, stats, rewardsConfig, rewardsState, getToday(), luckyEvent);
   const loot = chest.claimed ? chest.claim : chest.preview;
   console.log('🎁 Daily Loot Chest');
+  console.log(`- Lucky Weekend: ${luckyEvent.active ? `ACTIVE (${luckyEvent.name})` : 'inactive'}`);
   console.log(`- Status: ${chest.claimed ? 'Claimed' : 'Ready to open'}`);
   console.log(`- ${chest.claimed ? 'Loot' : 'Preview'}: ${loot.rarity} (+${loot.rewards.coins} coins, +${loot.rewards.tokens} tokens, +${loot.rewards.gems} gems)`);
   console.log(`- Intensity: ${stats.streakBonus.intensity}`);
-  console.log(`- Multiplier: x${stats.streakBonus.multiplier}`);
+  console.log(`- Multiplier: x${stats.streakBonus.multiplier} (cap x${stats.streakBonus.cap})`);
   console.log(`- Wallet: ${chest.wallet.coins} coins / ${chest.wallet.tokens} tokens / ${chest.wallet.gems} gems`);
   console.log('- Open with: npm run lc:chest -- --open');
 }
