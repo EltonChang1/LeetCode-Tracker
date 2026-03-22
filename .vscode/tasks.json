@@ -20,6 +20,13 @@
       "problemMatcher": []
     },
     {
+      "label": "LeetCode: Game Dashboard",
+      "type": "shell",
+      "command": "npm run lc:web",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "LeetCode: Refresh Dashboard",
       "type": "shell",
       "command": "npm run lc:dashboard",

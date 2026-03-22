@@ -5,11 +5,13 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 ## Features
 - ✅ Log solved problems from terminal with one command
 - 🔥 Auto-calculate your daily streak and longest streak
+- 🛡️ Streak shield: 1 miss allowed per 14 days
 - ⭐ XP + level system based on difficulty
 - 🏅 Achievement badges to keep momentum
 - 🎯 Daily mission with low-friction start prompt
 - 📈 Weekly consistency score (0-100)
 - 📊 Auto-generated dashboard (`DASHBOARD.md`)
+- 🌐 Game-style web dashboard (`web/index.html`)
 - 🚀 One-command daily commit + push workflow
 
 ## Quick Start
@@ -23,6 +25,7 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
    - `npm run lc:today`
    - `npm run lc:mission`
    - `npm run lc:dashboard`
+   - `npm run lc:web` then open `http://localhost:4321`
 5. Daily update to GitHub:
    - `npm run lc:push`
    - or custom message: `npm run lc:push -- "leetcode day 12"`
@@ -40,6 +43,13 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - Build identity proof: daily GitHub commits become visible consistency.
 - No coercion: this app nudges behavior; it does not force people.
 - Low-motivation fallback: open one problem and code for 2 minutes.
+
+## Game Loop
+1. Open game dashboard: `npm run lc:web`
+2. Complete daily mission shown in dashboard.
+3. Log solve with `npm run lc:add -- ...`
+4. Watch streak shield, XP, and achievements update.
+5. End session with `npm run lc:push`.
 
 ## Add Entry Command
 ```bash

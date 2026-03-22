@@ -7,6 +7,7 @@
 - Longest Streak: **0 day(s)**
 - XP: **0**
 - Level: **1**
+- Streak Shield: **0/1 miss used** (1 miss allowed per 14 days)
 
 ## Daily Mission
 - Today's mission 🎯

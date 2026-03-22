@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LeetCode Quest Arena</title>
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body>
+    <div class="bg-glow"></div>
+    <main class="container">
+      <header class="hero card">
+        <div>
+          <p class="eyebrow">LEETCODE QUEST ARENA</p>
+          <h1>Daily Battle Board</h1>
+          <p id="todayLine" class="sub">Loading mission...</p>
+        </div>
+        <div class="hero-actions">
+          <a class="btn" href="https://leetcode.com/problemset/" target="_blank" rel="noreferrer">Start Quest</a>
+          <button id="refreshBtn" class="btn ghost">Refresh</button>
+        </div>
+      </header>
+
+      <section class="stats-grid">
+        <article class="card stat"><h3>Current Streak</h3><p id="currentStreak">0</p></article>
+        <article class="card stat"><h3>Longest Streak</h3><p id="longestStreak">0</p></article>
+        <article class="card stat"><h3>XP / Level</h3><p id="xpLevel">0 / 1</p></article>
+        <article class="card stat"><h3>Consistency</h3><p id="consistency">0/100</p></article>
+      </section>
+
+      <section class="layout-two">
+        <article class="card">
+          <h2>🎯 Daily Mission</h2>
+          <p id="missionText">-</p>
+          <p id="nudgeText" class="muted">-</p>
+          <div class="shield">
+            <span>🛡️ Shield</span>
+            <strong id="shieldText">0/1 used</strong>
+            <small>1 miss allowed per 14 days</small>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>🏆 Achievements</h2>
+          <div id="achievements" class="chips"></div>
+        </article>
+      </section>
+
+      <section class="layout-two">
+        <article class="card">
+          <h2>📅 14-Day Heatbar</h2>
+          <div id="heatbar" class="heatbar"></div>
+        </article>
+
+        <article class="card">
+          <h2>⚔️ Recent Solves</h2>
+          <ul id="recentList" class="recent"></ul>
+        </article>
+      </section>
+    </main>
+
+    <script src="/web/app.js" type="module"></script>
+  </body>
+</html>

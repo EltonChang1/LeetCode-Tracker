@@ -9,6 +9,7 @@
     "lc:dashboard": "node scripts/track.js dashboard",
     "lc:today": "node scripts/track.js today",
     "lc:mission": "node scripts/track.js mission",
+    "lc:web": "node scripts/serve-web.js",
     "lc:push": "node scripts/push-daily.js"
   }
 }
