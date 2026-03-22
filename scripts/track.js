@@ -8,6 +8,8 @@ const entriesPath = path.join(rootDir, 'progress', 'entries.json');
 const dashboardPath = path.join(rootDir, 'DASHBOARD.md');
 const profilePath = path.join(rootDir, 'progress', 'profile.json');
 const bossesPath = path.join(rootDir, 'progress', 'bosses.json');
+const leaguesPath = path.join(rootDir, 'progress', 'leagues.json');
+const raidBossesPath = path.join(rootDir, 'progress', 'raid-bosses.json');
 
 const pointsByDifficulty = {
   easy: 10,
@@ -17,6 +19,28 @@ const pointsByDifficulty = {
 
 const FREEZE_WINDOW_DAYS = 14;
 const FREEZE_ALLOWANCE_PER_WINDOW = 1;
+
+const ELO_BASE = 1000;
+const ELO_TARGET_BY_DIFFICULTY = {
+  easy: 900,
+  medium: 1150,
+  hard: 1400,
+};
+const ELO_K_BY_DIFFICULTY = {
+  easy: 16,
+  medium: 24,
+  hard: 32,
+};
+const ELO_RANKS = [
+  { name: 'Iron', minRating: 0 },
+  { name: 'Bronze', minRating: 900 },
+  { name: 'Silver', minRating: 1050 },
+  { name: 'Gold', minRating: 1200 },
+  { name: 'Platinum', minRating: 1350 },
+  { name: 'Diamond', minRating: 1500 },
+  { name: 'Master', minRating: 1700 },
+  { name: 'Grandmaster', minRating: 1900 },
+];
 
 function ensureFile(filePath, fallback = '[]\n') {
   if (!fs.existsSync(filePath)) {
@@ -85,6 +109,68 @@ function readBosses() {
 
   try {
     const raw = fs.readFileSync(bossesPath, 'utf8').trim();
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readLeagueConfig() {
+  const fallback = {
+    seasonAnchorDate: '2026-01-01',
+    seasonLengthDays: 90,
+    tiers: [
+      { name: 'Bronze', minPoints: 0 },
+      { name: 'Silver', minPoints: 300 },
+      { name: 'Gold', minPoints: 700 },
+      { name: 'Platinum', minPoints: 1200 },
+      { name: 'Diamond', minPoints: 1800 },
+      { name: 'Master', minPoints: 2600 },
+      { name: 'Grandmaster', minPoints: 3600 },
+    ],
+  };
+
+  if (!fs.existsSync(leaguesPath)) {
+    fs.writeFileSync(leaguesPath, JSON.stringify(fallback, null, 2) + '\n', 'utf8');
+    return fallback;
+  }
+
+  try {
+    const raw = fs.readFileSync(leaguesPath, 'utf8').trim();
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return fallback;
+    return {
+      ...fallback,
+      ...parsed,
+      tiers: Array.isArray(parsed.tiers) && parsed.tiers.length ? parsed.tiers : fallback.tiers,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function readRaidBosses() {
+  const fallback = [
+    {
+      id: 'kraken-of-complexity',
+      name: 'Kraken of Complexity',
+      element: 'Algorithmic Depth',
+      weeklyHp: 1600,
+      weaknessTags: ['graph', 'dp', 'tree'],
+      loot: 'Complexity Core',
+    },
+  ];
+
+  if (!fs.existsSync(raidBossesPath)) {
+    fs.writeFileSync(raidBossesPath, JSON.stringify(fallback, null, 2) + '\n', 'utf8');
+    return fallback;
+  }
+
+  try {
+    const raw = fs.readFileSync(raidBossesPath, 'utf8').trim();
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) && parsed.length ? parsed : fallback;
@@ -304,6 +390,166 @@ function randomPick(list, seedSource) {
   return list[seed % list.length];
 }
 
+function ratingToRank(rating) {
+  let current = ELO_RANKS[0];
+  let next = null;
+  for (let i = 0; i < ELO_RANKS.length; i += 1) {
+    const rank = ELO_RANKS[i];
+    if (rating >= rank.minRating) {
+      current = rank;
+      next = ELO_RANKS[i + 1] || null;
+    }
+  }
+  return { current, next };
+}
+
+function getSortedEntries(entries) {
+  return [...entries].sort((a, b) => {
+    if (a.solvedAt !== b.solvedAt) return a.solvedAt.localeCompare(b.solvedAt);
+    if ((a.createdAt || '') !== (b.createdAt || '')) return (a.createdAt || '').localeCompare(b.createdAt || '');
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
+function calculateEloProgress(entries) {
+  const sorted = getSortedEntries(entries);
+  let rating = ELO_BASE;
+
+  for (const entry of sorted) {
+    const target = ELO_TARGET_BY_DIFFICULTY[entry.difficulty] || ELO_BASE;
+    const k = ELO_K_BY_DIFFICULTY[entry.difficulty] || 16;
+    const expected = 1 / (1 + 10 ** ((target - rating) / 400));
+    rating += k * (1 - expected);
+  }
+
+  rating = Math.max(300, Math.round(rating));
+  const rank = ratingToRank(rating);
+  const progressToNext = rank.next
+    ? Math.max(0, Math.min(100, Math.round(((rating - rank.current.minRating) / (rank.next.minRating - rank.current.minRating)) * 100)))
+    : 100;
+
+  return {
+    rating,
+    rank: rank.current.name,
+    nextRank: rank.next ? rank.next.name : null,
+    toNext: rank.next ? Math.max(0, rank.next.minRating - rating) : 0,
+    progressToNext,
+  };
+}
+
+function getSeasonInfo(entries, dateObj = toDate(getToday())) {
+  const config = readLeagueConfig();
+  const anchor = toDate(config.seasonAnchorDate || '2026-01-01');
+  const seasonLengthDays = Math.max(1, Number(config.seasonLengthDays || 90));
+
+  const daysFromAnchor = Math.floor((dateObj - anchor) / 86400000);
+  const seasonIndex = daysFromAnchor >= 0 ? Math.floor(daysFromAnchor / seasonLengthDays) : 0;
+  const seasonStart = addDays(anchor, seasonIndex * seasonLengthDays);
+  const seasonEnd = addDays(seasonStart, seasonLengthDays - 1);
+
+  const inSeason = entries.filter((entry) => {
+    const d = toDate(entry.solvedAt);
+    return d >= seasonStart && d <= seasonEnd;
+  });
+
+  const seasonPoints = inSeason.reduce((sum, entry) => {
+    const base = pointsByDifficulty[entry.difficulty] || 0;
+    const bonus = entry.difficulty === 'hard' ? 15 : entry.difficulty === 'medium' ? 5 : 0;
+    return sum + base + bonus;
+  }, 0);
+
+  const tiers = [...config.tiers].sort((a, b) => a.minPoints - b.minPoints);
+  let tier = tiers[0];
+  let nextTier = null;
+  for (let i = 0; i < tiers.length; i += 1) {
+    if (seasonPoints >= tiers[i].minPoints) {
+      tier = tiers[i];
+      nextTier = tiers[i + 1] || null;
+    }
+  }
+
+  return {
+    seasonId: `S${seasonIndex + 1}`,
+    seasonRange: `${toDateKey(seasonStart)} to ${toDateKey(seasonEnd)}`,
+    seasonLengthDays,
+    points: seasonPoints,
+    tier: tier ? tier.name : 'Bronze',
+    nextTier: nextTier ? nextTier.name : null,
+    toNext: nextTier ? Math.max(0, nextTier.minPoints - seasonPoints) : 0,
+    solves: inSeason.length,
+  };
+}
+
+function pseudoRandomNumber(seedText, min, max) {
+  const seed = String(seedText || 'seed');
+  let value = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    value = (value * 31 + seed.charCodeAt(i)) % 1000000;
+  }
+  const ratio = value / 1000000;
+  return Math.floor(min + ratio * (max - min + 1));
+}
+
+function getRaidStatus(entries, dateObj = toDate(getToday())) {
+  const bosses = readRaidBosses();
+  if (!bosses.length) return null;
+
+  const weekStart = getWeekStartMonday(dateObj);
+  const weekEnd = addDays(weekStart, 6);
+  const weekIndex = getWeekIndex(dateObj);
+  const boss = bosses[weekIndex % bosses.length];
+
+  const weekEntries = entries.filter((entry) => {
+    const d = toDate(entry.solvedAt);
+    return d >= weekStart && d <= weekEnd;
+  });
+
+  const weakness = new Set((boss.weaknessTags || []).map((tag) => String(tag).toLowerCase()));
+
+  let playerDamage = 0;
+  for (const entry of weekEntries) {
+    const base = entry.difficulty === 'hard' ? 190 : entry.difficulty === 'medium' ? 110 : 60;
+    const weaknessBonus = (entry.tags || []).some((tag) => weakness.has(String(tag).toLowerCase())) ? 30 : 0;
+    playerDamage += base + weaknessBonus;
+  }
+
+  const team = ['Nova', 'Cipher', 'Rune'].map((name, idx) => {
+    const base = pseudoRandomNumber(`${name}-${toDateKey(weekStart)}-${idx}`, 180, 340);
+    const consistencyBuff = Math.min(120, weekEntries.length * 18);
+    return {
+      name,
+      damage: base + consistencyBuff,
+    };
+  });
+
+  const teamDamage = team.reduce((sum, mate) => sum + mate.damage, 0);
+  const totalDamage = playerDamage + teamDamage;
+  const hp = Number(boss.weeklyHp || 1500);
+  const hpLeft = Math.max(0, hp - totalDamage);
+  const cleared = hpLeft === 0;
+  const clearPct = Math.round((Math.min(totalDamage, hp) / hp) * 100);
+
+  const rewardTier =
+    clearPct >= 100 ? 'Legendary' :
+    clearPct >= 80 ? 'Epic' :
+    clearPct >= 55 ? 'Rare' :
+    'Common';
+
+  return {
+    boss,
+    weekRange: `${toDateKey(weekStart)} to ${toDateKey(weekEnd)}`,
+    hp,
+    playerDamage,
+    team,
+    teamDamage,
+    totalDamage,
+    hpLeft,
+    clearPct,
+    cleared,
+    rewardTier,
+  };
+}
+
 function getWeekStartMonday(dateObj) {
   const result = new Date(dateObj);
   const day = result.getDay();
@@ -457,6 +703,9 @@ function calculateStats(entries) {
   }
 
   const consistencyScore = Math.min(100, Math.round((weekActiveDays / 7) * 100));
+  const elo = calculateEloProgress(entries);
+  const season = getSeasonInfo(entries, today);
+  const raid = getRaidStatus(entries, today);
 
   return {
     total,
@@ -471,6 +720,9 @@ function calculateStats(entries) {
     todayCount,
     weekActiveDays,
     consistencyScore,
+    elo,
+    season,
+    raid,
     recent: [...entries].sort((a, b) => b.solvedAt.localeCompare(a.solvedAt)).slice(0, 10),
   };
 }
@@ -560,7 +812,13 @@ function renderDashboard(entries) {
     ? `## Weekly Boss Fight\n- Boss: **${bossStatus.boss.name}** (${bossStatus.boss.theme})\n- Week: **${bossStatus.weekRange}**\n- Progress: solves=${bossStatus.progress.solves}, medium+=${bossStatus.progress.mediumPlus}, hard=${bossStatus.progress.hard}, themeHits=${bossStatus.progress.tagHits}\n- Reward Tier: **${bossStatus.achievedTier ? bossStatus.achievedTier.name : 'Unranked'}**\n${bossStatus.nextTier ? `- Next Tier: **${bossStatus.nextTier.name}** (remaining: solves ${bossStatus.nextTier.remaining.solves}, medium+ ${bossStatus.nextTier.remaining.mediumPlus}, hard ${bossStatus.nextTier.remaining.hard}, themeHits ${bossStatus.nextTier.remaining.tagHits})` : '- Max tier reached this week: **Diamond**'}\n\n`
     : '';
 
-  const markdown = `# LeetCode Progress Dashboard\n\n## Snapshot\n- Total Solved: **${stats.total}**\n- Solved Days: **${stats.solvedDays}**\n- Current Streak: **${stats.currentStreak} day(s)**\n- Longest Streak: **${stats.longestStreak} day(s)**\n- XP: **${stats.xp}**\n- Level: **${stats.level}**\n- Streak Shield: **${stats.freezeMissesUsed}/${stats.freezeMissesAllowed} miss used** (1 miss allowed per 14 days)\n\n## Daily Mission\n- ${mission.title}\n- ${mission.detail}\n- Nudge: ${nudge}\n\n${bossSection}## Consistency Score\n- Last 7 active days: **${stats.weekActiveDays}/7**\n- Consistency score: **${stats.consistencyScore}/100**\n\n## Difficulty Breakdown\n- Easy: **${stats.byDifficulty.easy}**\n- Medium: **${stats.byDifficulty.medium}**\n- Hard: **${stats.byDifficulty.hard}**\n\n## 14-Day Consistency\n${renderWeekBar(entries)}\n\n## Achievements\n${achievements.map((a) => `- ${a}`).join('\n')}\n\n## Recent Solves\n${recentLines}\n\n---\nAuto-generated by \`npm run lc:dashboard\`.\n`;
+  const leagueSection = `## Seasonal League\n- Season: **${stats.season.seasonId}** (${stats.season.seasonRange})\n- Tier: **${stats.season.tier}**\n- Points: **${stats.season.points}**\n${stats.season.nextTier ? `- Next Tier: **${stats.season.nextTier}** (need ${stats.season.toNext} pts)` : '- Max tier reached this season'}\n- ELO Rating: **${stats.elo.rating}** (${stats.elo.rank})\n${stats.elo.nextRank ? `- Next Rank: **${stats.elo.nextRank}** (need ${stats.elo.toNext})` : '- Top rank reached'}\n\n`;
+
+  const raidSection = stats.raid
+    ? `## Weekly Raid Boss (Solo-Simulated Team)\n- Raid: **${stats.raid.boss.name}** [${stats.raid.boss.element}]\n- Week: **${stats.raid.weekRange}**\n- HP: **${stats.raid.hp}** | Damage: **${stats.raid.totalDamage}** | HP Left: **${stats.raid.hpLeft}**\n- Clear: **${stats.raid.clearPct}%** | Reward Tier: **${stats.raid.rewardTier}**\n- You: **${stats.raid.playerDamage} dmg** | Team: **${stats.raid.teamDamage} dmg**\n- Teammates: ${stats.raid.team.map((mate) => `${mate.name} ${mate.damage}`).join(', ')}\n\n`
+    : '';
+
+  const markdown = `# LeetCode Progress Dashboard\n\n## Snapshot\n- Total Solved: **${stats.total}**\n- Solved Days: **${stats.solvedDays}**\n- Current Streak: **${stats.currentStreak} day(s)**\n- Longest Streak: **${stats.longestStreak} day(s)**\n- XP: **${stats.xp}**\n- Level: **${stats.level}**\n- Streak Shield: **${stats.freezeMissesUsed}/${stats.freezeMissesAllowed} miss used** (1 miss allowed per 14 days)\n\n## Daily Mission\n- ${mission.title}\n- ${mission.detail}\n- Nudge: ${nudge}\n\n${leagueSection}${bossSection}${raidSection}## Consistency Score\n- Last 7 active days: **${stats.weekActiveDays}/7**\n- Consistency score: **${stats.consistencyScore}/100**\n\n## Difficulty Breakdown\n- Easy: **${stats.byDifficulty.easy}**\n- Medium: **${stats.byDifficulty.medium}**\n- Hard: **${stats.byDifficulty.hard}**\n\n## 14-Day Consistency\n${renderWeekBar(entries)}\n\n## Achievements\n${achievements.map((a) => `- ${a}`).join('\n')}\n\n## Recent Solves\n${recentLines}\n\n---\nAuto-generated by \`npm run lc:dashboard\`.\n`;
 
   fs.writeFileSync(dashboardPath, markdown, 'utf8');
   return stats;
@@ -621,6 +879,13 @@ function addEntry(args) {
   console.log(`✅ Logged #${entry.id} ${entry.title} (${formatDifficulty(entry.difficulty)})`);
   console.log(`📁 Solution file: ${entry.solutionPath}`);
   console.log(`🔥 Current streak: ${stats.currentStreak} day(s)`);
+  console.log(`🏁 League: ${stats.season.tier} (${stats.season.points} pts) | ELO ${stats.elo.rating} (${stats.elo.rank})`);
+  if (stats.elo.nextRank) {
+    console.log(`📈 Next rank ${stats.elo.nextRank} in ${stats.elo.toNext} rating`);
+  }
+  if (stats.raid) {
+    console.log(`🧨 Raid: ${stats.raid.boss.name} ${stats.raid.clearPct}% (${stats.raid.totalDamage}/${stats.raid.hp})`);
+  }
   if (bossStatus) {
     console.log(`👹 Weekly Boss: ${bossStatus.boss.name}`);
     console.log(`🏆 Tier: ${bossStatus.achievedTier ? bossStatus.achievedTier.name : 'Unranked'}`);
@@ -705,6 +970,46 @@ function showBoss(entries) {
   }
 }
 
+function showLeague(entries) {
+  const stats = calculateStats(entries);
+  console.log('🏟️ Seasonal League');
+  console.log(`- Season: ${stats.season.seasonId}`);
+  console.log(`- Range: ${stats.season.seasonRange}`);
+  console.log(`- Tier: ${stats.season.tier}`);
+  console.log(`- Points: ${stats.season.points}`);
+  console.log(`- Solves this season: ${stats.season.solves}`);
+  if (stats.season.nextTier) {
+    console.log(`- Next Tier: ${stats.season.nextTier} in ${stats.season.toNext} pts`);
+  } else {
+    console.log('- Season tier maxed');
+  }
+  console.log(`- ELO: ${stats.elo.rating} (${stats.elo.rank})`);
+  if (stats.elo.nextRank) {
+    console.log(`- Next ELO Rank: ${stats.elo.nextRank} in ${stats.elo.toNext}`);
+  } else {
+    console.log('- ELO rank maxed');
+  }
+}
+
+function showRaid(entries) {
+  const stats = calculateStats(entries);
+  if (!stats.raid) {
+    console.log('Raid mode unavailable. Add progress/raid-bosses.json to enable it.');
+    return;
+  }
+
+  console.log('🛡️ Weekly Raid Boss (Solo-Simulated Team)');
+  console.log(`- Boss: ${stats.raid.boss.name} [${stats.raid.boss.element}]`);
+  console.log(`- Week: ${stats.raid.weekRange}`);
+  console.log(`- HP: ${stats.raid.hp}`);
+  console.log(`- Damage: ${stats.raid.totalDamage} (${stats.raid.clearPct}%)`);
+  console.log(`- HP Left: ${stats.raid.hpLeft}`);
+  console.log(`- Reward Tier: ${stats.raid.rewardTier}`);
+  console.log(`- You: ${stats.raid.playerDamage} dmg`);
+  console.log(`- Team: ${stats.raid.teamDamage} dmg`);
+  console.log(`- Allies: ${stats.raid.team.map((mate) => `${mate.name}:${mate.damage}`).join(', ')}`);
+}
+
 function main() {
   const command = process.argv[2];
   const args = parseArgs(process.argv.slice(3));
@@ -738,12 +1043,24 @@ function main() {
       return;
     }
 
+    if (command === 'league') {
+      showLeague(entries);
+      return;
+    }
+
+    if (command === 'raid') {
+      showRaid(entries);
+      return;
+    }
+
     console.log('Usage:');
     console.log('  npm run lc:add -- --id 1 --title "Two Sum" --difficulty easy --lang js --tags array,hash --time 15');
     console.log('  npm run lc:today');
     console.log('  npm run lc:dashboard');
     console.log('  npm run lc:mission');
     console.log('  npm run lc:boss');
+    console.log('  npm run lc:league');
+    console.log('  npm run lc:raid');
   } catch (error) {
     console.error(`❌ ${error.message}`);
     process.exit(1);

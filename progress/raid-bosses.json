@@ -1,0 +1,34 @@
+[
+  {
+    "id": "kraken-of-complexity",
+    "name": "Kraken of Complexity",
+    "element": "Algorithmic Depth",
+    "weeklyHp": 1600,
+    "weaknessTags": ["graph", "dp", "tree"],
+    "loot": "Complexity Core"
+  },
+  {
+    "id": "cache-lich",
+    "name": "Cache Lich",
+    "element": "Optimization",
+    "weeklyHp": 1400,
+    "weaknessTags": ["hash-table", "array", "sliding-window"],
+    "loot": "Latency Sigil"
+  },
+  {
+    "id": "recursion-drake",
+    "name": "Recursion Drake",
+    "element": "Call Stack",
+    "weeklyHp": 1500,
+    "weaknessTags": ["recursion", "tree", "backtracking"],
+    "loot": "Stack Ember"
+  },
+  {
+    "id": "greedy-colossus",
+    "name": "Greedy Colossus",
+    "element": "Decision Making",
+    "weeklyHp": 1450,
+    "weaknessTags": ["greedy", "sorting", "heap"],
+    "loot": "Optimality Crown"
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "seasonAnchorDate": "2026-01-01",
+  "seasonLengthDays": 90,
+  "tiers": [
+    { "name": "Bronze", "minPoints": 0 },
+    { "name": "Silver", "minPoints": 300 },
+    { "name": "Gold", "minPoints": 700 },
+    { "name": "Platinum", "minPoints": 1200 },
+    { "name": "Diamond", "minPoints": 1800 },
+    { "name": "Master", "minPoints": 2600 },
+    { "name": "Grandmaster", "minPoints": 3600 }
+  ]
+}

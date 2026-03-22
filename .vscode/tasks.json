@@ -26,6 +26,18 @@
       "problemMatcher": []
     },
     {
+      "label": "LeetCode: League Status",
+      "type": "shell",
+      "command": "npm run lc:league",
+      "problemMatcher": []
+    },
+    {
+      "label": "LeetCode: Raid Status",
+      "type": "shell",
+      "command": "npm run lc:raid",
+      "problemMatcher": []
+    },
+    {
       "label": "LeetCode: Game Dashboard",
       "type": "shell",
       "command": "npm run lc:web",

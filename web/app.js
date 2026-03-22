@@ -1,5 +1,44 @@
 const points = { easy: 10, medium: 20, hard: 40 };
 const FREEZE_WINDOW_DAYS = 14;
+const ELO_BASE = 1000;
+
+const ELO_TARGET_BY_DIFFICULTY = { easy: 900, medium: 1150, hard: 1400 };
+const ELO_K_BY_DIFFICULTY = { easy: 16, medium: 24, hard: 32 };
+const ELO_RANKS = [
+  { name: 'Iron', minRating: 0 },
+  { name: 'Bronze', minRating: 900 },
+  { name: 'Silver', minRating: 1050 },
+  { name: 'Gold', minRating: 1200 },
+  { name: 'Platinum', minRating: 1350 },
+  { name: 'Diamond', minRating: 1500 },
+  { name: 'Master', minRating: 1700 },
+  { name: 'Grandmaster', minRating: 1900 },
+];
+
+const fallbackLeagueConfig = {
+  seasonAnchorDate: '2026-01-01',
+  seasonLengthDays: 90,
+  tiers: [
+    { name: 'Bronze', minPoints: 0 },
+    { name: 'Silver', minPoints: 300 },
+    { name: 'Gold', minPoints: 700 },
+    { name: 'Platinum', minPoints: 1200 },
+    { name: 'Diamond', minPoints: 1800 },
+    { name: 'Master', minPoints: 2600 },
+    { name: 'Grandmaster', minPoints: 3600 },
+  ],
+};
+
+const fallbackRaidBosses = [
+  {
+    id: 'kraken-of-complexity',
+    name: 'Kraken of Complexity',
+    element: 'Algorithmic Depth',
+    weeklyHp: 1600,
+    weaknessTags: ['graph', 'dp', 'tree'],
+    loot: 'Complexity Core',
+  },
+];
 
 const fallbackBosses = [
   {
@@ -134,19 +173,158 @@ function calcStats(entries) {
 }
 
 async function loadData() {
-  const [entriesRes, profileRes, bossesRes] = await Promise.all([
+  const [entriesRes, profileRes, bossesRes, leagueRes, raidRes] = await Promise.all([
     fetch(`/progress/entries.json?ts=${Date.now()}`),
     fetch(`/progress/profile.json?ts=${Date.now()}`),
     fetch(`/progress/bosses.json?ts=${Date.now()}`),
+    fetch(`/progress/leagues.json?ts=${Date.now()}`),
+    fetch(`/progress/raid-bosses.json?ts=${Date.now()}`),
   ]);
 
   const entries = entriesRes.ok ? await entriesRes.json() : [];
   const profile = profileRes.ok ? await profileRes.json() : { dailyMinimum: 1, targetMinutes: 20, preferredWarmupDifficulty: 'easy' };
   const bosses = bossesRes.ok ? await bossesRes.json() : fallbackBosses;
+  const league = leagueRes.ok ? await leagueRes.json() : fallbackLeagueConfig;
+  const raidBosses = raidRes.ok ? await raidRes.json() : fallbackRaidBosses;
   return {
     entries: Array.isArray(entries) ? entries : [],
     profile,
     bosses: Array.isArray(bosses) && bosses.length ? bosses : fallbackBosses,
+    league: league && typeof league === 'object' ? league : fallbackLeagueConfig,
+    raidBosses: Array.isArray(raidBosses) && raidBosses.length ? raidBosses : fallbackRaidBosses,
+  };
+}
+
+function ratingToRank(rating) {
+  let current = ELO_RANKS[0];
+  let next = null;
+  for (let i = 0; i < ELO_RANKS.length; i += 1) {
+    const rank = ELO_RANKS[i];
+    if (rating >= rank.minRating) {
+      current = rank;
+      next = ELO_RANKS[i + 1] || null;
+    }
+  }
+  return { current, next };
+}
+
+function eloProgress(entries) {
+  const sorted = [...entries].sort((a, b) => {
+    if (a.solvedAt !== b.solvedAt) return a.solvedAt.localeCompare(b.solvedAt);
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  let rating = ELO_BASE;
+  for (const entry of sorted) {
+    const target = ELO_TARGET_BY_DIFFICULTY[entry.difficulty] || ELO_BASE;
+    const k = ELO_K_BY_DIFFICULTY[entry.difficulty] || 16;
+    const expected = 1 / (1 + 10 ** ((target - rating) / 400));
+    rating += k * (1 - expected);
+  }
+
+  rating = Math.max(300, Math.round(rating));
+  const rank = ratingToRank(rating);
+  return {
+    rating,
+    rank: rank.current.name,
+    nextRank: rank.next ? rank.next.name : null,
+    toNext: rank.next ? Math.max(0, rank.next.minRating - rating) : 0,
+  };
+}
+
+function seasonStatus(entries, league) {
+  const today = toDate(todayKey());
+  const anchor = toDate(league.seasonAnchorDate || fallbackLeagueConfig.seasonAnchorDate);
+  const seasonLengthDays = Math.max(1, Number(league.seasonLengthDays || 90));
+  const days = Math.floor((today - anchor) / 86400000);
+  const seasonIndex = days >= 0 ? Math.floor(days / seasonLengthDays) : 0;
+  const start = addDays(anchor, seasonIndex * seasonLengthDays);
+  const end = addDays(start, seasonLengthDays - 1);
+
+  const inSeason = entries.filter((entry) => {
+    const d = toDate(entry.solvedAt);
+    return d >= start && d <= end;
+  });
+
+  const points = inSeason.reduce((sum, entry) => {
+    const base = { easy: 10, medium: 25, hard: 55 }[entry.difficulty] || 0;
+    return sum + base;
+  }, 0);
+
+  const tiers = [...(league.tiers || fallbackLeagueConfig.tiers)].sort((a, b) => a.minPoints - b.minPoints);
+  let tier = tiers[0];
+  let next = null;
+  for (let i = 0; i < tiers.length; i += 1) {
+    if (points >= tiers[i].minPoints) {
+      tier = tiers[i];
+      next = tiers[i + 1] || null;
+    }
+  }
+
+  return {
+    seasonId: `S${seasonIndex + 1}`,
+    range: `${key(start)} to ${key(end)}`,
+    points,
+    tier: tier ? tier.name : 'Bronze',
+    nextTier: next ? next.name : null,
+    toNext: next ? Math.max(0, next.minPoints - points) : 0,
+  };
+}
+
+function pseudoRandomNumber(seedText, min, max) {
+  const seed = String(seedText || 'seed');
+  let value = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    value = (value * 31 + seed.charCodeAt(i)) % 1000000;
+  }
+  const ratio = value / 1000000;
+  return Math.floor(min + ratio * (max - min + 1));
+}
+
+function raidStatus(entries, raidBosses) {
+  const today = toDate(todayKey());
+  const weekStart = getWeekStartMonday(today);
+  const weekEnd = addDays(weekStart, 6);
+  const weekIndex = getWeekIndex(today);
+  const boss = raidBosses[weekIndex % raidBosses.length];
+  if (!boss) return null;
+
+  const weakness = new Set((boss.weaknessTags || []).map((tag) => String(tag).toLowerCase()));
+  const weekEntries = entries.filter((entry) => {
+    const d = toDate(entry.solvedAt);
+    return d >= weekStart && d <= weekEnd;
+  });
+
+  let playerDamage = 0;
+  for (const entry of weekEntries) {
+    const base = entry.difficulty === 'hard' ? 190 : entry.difficulty === 'medium' ? 110 : 60;
+    const weaknessBonus = (entry.tags || []).some((tag) => weakness.has(String(tag).toLowerCase())) ? 30 : 0;
+    playerDamage += base + weaknessBonus;
+  }
+
+  const allies = ['Nova', 'Cipher', 'Rune'].map((name, idx) => ({
+    name,
+    damage: pseudoRandomNumber(`${name}-${key(weekStart)}-${idx}`, 180, 340) + Math.min(120, weekEntries.length * 18),
+  }));
+
+  const teamDamage = allies.reduce((sum, ally) => sum + ally.damage, 0);
+  const hp = Number(boss.weeklyHp || 1500);
+  const totalDamage = playerDamage + teamDamage;
+  const hpLeft = Math.max(0, hp - totalDamage);
+  const clearPct = Math.round((Math.min(totalDamage, hp) / hp) * 100);
+  const rewardTier = clearPct >= 100 ? 'Legendary' : clearPct >= 80 ? 'Epic' : clearPct >= 55 ? 'Rare' : 'Common';
+
+  return {
+    boss,
+    weekRange: `${key(weekStart)} to ${key(weekEnd)}`,
+    hp,
+    totalDamage,
+    playerDamage,
+    teamDamage,
+    hpLeft,
+    clearPct,
+    rewardTier,
+    allies,
   };
 }
 
@@ -233,7 +411,7 @@ function nudge(stats) {
   return 'Tiny start wins: open one problem and code for 2 minutes.';
 }
 
-function render(stats, profile, entries, bosses) {
+function render(stats, profile, entries, bosses, leagueConfig, raidBosses) {
   document.getElementById('todayLine').textContent = `Today: ${todayKey()} · ${stats.todayCount} solve(s)`;
   document.getElementById('currentStreak').textContent = `${stats.currentStreak}d`;
   document.getElementById('longestStreak').textContent = `${stats.longestStreak}d`;
@@ -307,13 +485,26 @@ function render(stats, profile, entries, bosses) {
       nextHint.textContent = 'Diamond tier cleared. Weekly boss defeated.';
     }
   }
+
+  const league = seasonStatus(entries, leagueConfig);
+  const elo = eloProgress(entries);
+  document.getElementById('leagueTier').textContent = `${league.tier} · ${league.seasonId}`;
+  document.getElementById('leaguePoints').textContent = `Points ${league.points}${league.nextTier ? ` · Next ${league.nextTier} in ${league.toNext}` : ' · Max tier'}`;
+  document.getElementById('eloLine').textContent = `ELO ${elo.rating} (${elo.rank})${elo.nextRank ? ` · Next ${elo.nextRank} in ${elo.toNext}` : ''}`;
+
+  const raid = raidStatus(entries, raidBosses);
+  if (raid) {
+    document.getElementById('raidBoss').textContent = `${raid.boss.name} · ${raid.clearPct}% · ${raid.rewardTier}`;
+    document.getElementById('raidDamage').textContent = `Damage ${raid.totalDamage}/${raid.hp} · You ${raid.playerDamage} · Team ${raid.teamDamage}`;
+    document.getElementById('raidAllies').textContent = `Allies: ${raid.allies.map((ally) => `${ally.name}:${ally.damage}`).join(', ')}`;
+  }
 }
 
 async function bootstrap() {
   try {
-    const { entries, profile, bosses } = await loadData();
+    const { entries, profile, bosses, league, raidBosses } = await loadData();
     const stats = calcStats(entries);
-    render(stats, profile, entries, bosses);
+    render(stats, profile, entries, bosses, league, raidBosses);
   } catch (err) {
     document.getElementById('todayLine').textContent = `Failed to load progress data: ${err.message}`;
   }

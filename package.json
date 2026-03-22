@@ -10,6 +10,8 @@
     "lc:today": "node scripts/track.js today",
     "lc:mission": "node scripts/track.js mission",
     "lc:boss": "node scripts/track.js boss",
+    "lc:league": "node scripts/track.js league",
+    "lc:raid": "node scripts/track.js raid",
     "lc:web": "node scripts/serve-web.js",
     "lc:push": "node scripts/push-daily.js"
   }

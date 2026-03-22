@@ -10,6 +10,9 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - 🏅 Achievement badges to keep momentum
 - 👹 Weekly boss fights with rotating themes
 - 🏆 Reward tiers: Bronze → Silver → Gold → Diamond
+- 🏟️ Seasonal leagues with tier ladders
+- 📈 ELO-style rank progression (Iron → Grandmaster)
+- 🛡️ Weekly raid boss mode with solo-simulated teammate squad
 - 🎯 Daily mission with low-friction start prompt
 - 📈 Weekly consistency score (0-100)
 - 📊 Auto-generated dashboard (`DASHBOARD.md`)
@@ -27,6 +30,8 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
    - `npm run lc:today`
    - `npm run lc:mission`
    - `npm run lc:boss`
+   - `npm run lc:league`
+   - `npm run lc:raid`
    - `npm run lc:dashboard`
    - `npm run lc:web` then open `http://localhost:4321`
 5. Daily update to GitHub:
@@ -51,14 +56,20 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 1. Open game dashboard: `npm run lc:web`
 2. Complete daily mission shown in dashboard.
 3. Beat weekly boss milestones in `npm run lc:boss`.
-4. Log solve with `npm run lc:add -- ...`
-5. Watch streak shield, XP, achievements, and boss tier update.
-6. End session with `npm run lc:push`.
+4. Track season and ELO progress in `npm run lc:league`.
+5. Push weekly raid damage in `npm run lc:raid`.
+6. Log solve with `npm run lc:add -- ...`
+7. Watch streak shield, XP, achievements, boss tier, league rank, and raid progress update.
+8. End session with `npm run lc:push`.
 
 ## Boss Configuration
 - Boss catalog is stored in `progress/bosses.json`.
 - One boss is selected each week automatically.
 - Tiers are unlocked by solving counts and theme-based tag hits.
+
+## League + Raid Configuration
+- League tiers and season settings: `progress/leagues.json`
+- Raid roster and weekly HP settings: `progress/raid-bosses.json`
 
 ## Add Entry Command
 ```bash

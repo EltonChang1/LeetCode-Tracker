@@ -14,12 +14,28 @@
 - Solve 1 easy problem in ≤ 20 min. Start with a 2-minute timer, not motivation.
 - Nudge: Keep the promise tiny: one easy problem, then stop if needed.
 
+## Seasonal League
+- Season: **S1** (2026-01-01 to 2026-03-31)
+- Tier: **Bronze**
+- Points: **0**
+- Next Tier: **Silver** (need 300 pts)
+- ELO Rating: **1000** (Bronze)
+- Next Rank: **Silver** (need 50)
+
 ## Weekly Boss Fight
 - Boss: **Graph Necromancer** (graphs and traversals)
 - Week: **2026-03-16 to 2026-03-22**
 - Progress: solves=0, medium+=0, hard=0, themeHits=0
 - Reward Tier: **Unranked**
 - Next Tier: **Bronze** (remaining: solves 2, medium+ 0, hard 0, themeHits 1)
+
+## Weekly Raid Boss (Solo-Simulated Team)
+- Raid: **Cache Lich** [Optimization]
+- Week: **2026-03-16 to 2026-03-22**
+- HP: **1400** | Damage: **882** | HP Left: **518**
+- Clear: **63%** | Reward Tier: **Rare**
+- You: **0 dmg** | Team: **882 dmg**
+- Teammates: Nova 318, Cipher 326, Rune 238
 
 ## Consistency Score
 - Last 7 active days: **0/7**
