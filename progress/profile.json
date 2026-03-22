@@ -1,0 +1,6 @@
+{
+  "dailyMinimum": 1,
+  "targetMinutes": 20,
+  "preferredWarmupDifficulty": "easy",
+  "maxPainMinutes": 30
+}

@@ -1,0 +1,14 @@
+{
+  "name": "leetcode-tracker-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Friendly LeetCode practice workspace with streak and daily Git workflow",
+  "type": "commonjs",
+  "scripts": {
+    "lc:add": "node scripts/track.js add",
+    "lc:dashboard": "node scripts/track.js dashboard",
+    "lc:today": "node scripts/track.js today",
+    "lc:mission": "node scripts/track.js mission",
+    "lc:push": "node scripts/push-daily.js"
+  }
+}

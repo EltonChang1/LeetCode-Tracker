@@ -1,0 +1,79 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "LeetCode: Log Solve",
+      "type": "shell",
+      "command": "npm run lc:add -- --id \"${input:lcId}\" --title \"${input:lcTitle}\" --difficulty \"${input:lcDifficulty}\" --lang \"${input:lcLang}\" --tags \"${input:lcTags}\" --time \"${input:lcTime}\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "LeetCode: Today Status",
+      "type": "shell",
+      "command": "npm run lc:today",
+      "problemMatcher": []
+    },
+    {
+      "label": "LeetCode: Mission",
+      "type": "shell",
+      "command": "npm run lc:mission",
+      "problemMatcher": []
+    },
+    {
+      "label": "LeetCode: Refresh Dashboard",
+      "type": "shell",
+      "command": "npm run lc:dashboard",
+      "problemMatcher": []
+    },
+    {
+      "label": "LeetCode: Daily Push",
+      "type": "shell",
+      "command": "npm run lc:push -- \"${input:pushMessage}\"",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "lcId",
+      "type": "promptString",
+      "description": "LeetCode problem ID (e.g. 1)"
+    },
+    {
+      "id": "lcTitle",
+      "type": "promptString",
+      "description": "Problem title (e.g. Two Sum)"
+    },
+    {
+      "id": "lcDifficulty",
+      "type": "pickString",
+      "description": "Difficulty",
+      "options": ["easy", "medium", "hard"],
+      "default": "easy"
+    },
+    {
+      "id": "lcLang",
+      "type": "pickString",
+      "description": "Language",
+      "options": ["js", "py", "java", "cpp", "go", "ts"],
+      "default": "js"
+    },
+    {
+      "id": "lcTags",
+      "type": "promptString",
+      "description": "Tags (comma-separated)",
+      "default": "array"
+    },
+    {
+      "id": "lcTime",
+      "type": "promptString",
+      "description": "Time spent in minutes",
+      "default": "15"
+    },
+    {
+      "id": "pushMessage",
+      "type": "promptString",
+      "description": "Commit message",
+      "default": "leetcode: daily update"
+    }
+  ]
+}
