@@ -16,6 +16,7 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - 🎁 Daily loot chest with persistent wallet
 - ✨ Win streak multiplier with configurable intensity
 - 🍀 Lucky Streak Weekend event (temporary rarity + multiplier cap boosts)
+- ⚡ Midweek Momentum event (Tue–Thu combo bonus boosts raid damage)
 - 🎯 Daily mission with low-friction start prompt
 - 📈 Weekly consistency score (0-100)
 - 📊 Auto-generated dashboard (`DASHBOARD.md`)
@@ -80,6 +81,7 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - Intensity and chest tuning: `progress/rewards.json`
 - Persistent wallet + daily claims: `progress/rewards-state.json`
 - Weekend event controls are in `rewards.json > weekendEvent`
+- Midweek raid combo event controls are in `rewards.json > midweekEvent`
 
 ## Add Entry Command
 ```bash

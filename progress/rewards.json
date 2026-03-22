@@ -63,5 +63,15 @@
     },
     "chestCoinBonus": 25,
     "tagline": "Fortune favors consistency. Weekend rewards are juiced."
+  },
+  "midweekEvent": {
+    "enabled": true,
+    "days": [2, 3, 4],
+    "name": "Midweek Momentum",
+    "raidDamageMultiplier": 1.2,
+    "teamDamageMultiplier": 1.08,
+    "comboStep": 3,
+    "comboBonusPerStep": 35,
+    "tagline": "Combo chains empower your raid squad Tuesday through Thursday."
   }
 }

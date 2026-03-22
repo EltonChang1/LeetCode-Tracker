@@ -110,6 +110,16 @@ const rewardDefaults = {
     chestCoinBonus: 25,
     tagline: 'Fortune favors consistency. Weekend rewards are juiced.',
   },
+  midweekEvent: {
+    enabled: true,
+    days: [2, 3, 4],
+    name: 'Midweek Momentum',
+    raidDamageMultiplier: 1.2,
+    teamDamageMultiplier: 1.08,
+    comboStep: 3,
+    comboBonusPerStep: 35,
+    tagline: 'Combo chains empower your raid squad Tuesday through Thursday.',
+  },
 };
 
 const rewardStateDefaults = {
@@ -290,6 +300,10 @@ function readRewardsConfig() {
       weekendEvent: {
         ...rewardDefaults.weekendEvent,
         ...(parsed.weekendEvent || {}),
+      },
+      midweekEvent: {
+        ...rewardDefaults.midweekEvent,
+        ...(parsed.midweekEvent || {}),
       },
     };
   } catch {
@@ -657,6 +671,16 @@ function getLuckyWeekendEvent(rewardConfig, dateObj = toDate(getToday())) {
   };
 }
 
+function getMidweekMomentumEvent(rewardConfig, dateObj = toDate(getToday())) {
+  const event = rewardConfig.midweekEvent || rewardDefaults.midweekEvent;
+  const days = Array.isArray(event.days) && event.days.length ? event.days : [2, 3, 4];
+  const active = Boolean(event.enabled) && days.includes(dateObj.getDay());
+  return {
+    ...event,
+    active,
+  };
+}
+
 function getBoostedWeights(weights, event) {
   const source = {
     ...weights,
@@ -771,9 +795,11 @@ function openDailyChest(entries, stats, rewardConfig, rewardState, dateKey = get
   };
 }
 
-function getRaidStatus(entries, dateObj = toDate(getToday())) {
+function getRaidStatus(entries, rewardConfig = readRewardsConfig(), dateObj = toDate(getToday())) {
   const bosses = readRaidBosses();
   if (!bosses.length) return null;
+
+  const midweekEvent = getMidweekMomentumEvent(rewardConfig, dateObj);
 
   const weekStart = getWeekStartMonday(dateObj);
   const weekEnd = addDays(weekStart, 6);
@@ -794,6 +820,17 @@ function getRaidStatus(entries, dateObj = toDate(getToday())) {
     playerDamage += base + weaknessBonus;
   }
 
+  const dateSet = new Set(entries.map((entry) => entry.solvedAt));
+  const streakInfo = calculateProtectedStreak(dateSet, dateObj);
+  const comboStep = Math.max(1, Number(midweekEvent.comboStep || 3));
+  const comboSteps = Math.floor(Math.max(0, streakInfo.streak) / comboStep);
+  const comboBonusDamage = midweekEvent.active ? comboSteps * Number(midweekEvent.comboBonusPerStep || 0) : 0;
+
+  let boostedPlayerDamage = playerDamage;
+  if (midweekEvent.active) {
+    boostedPlayerDamage = Math.round((playerDamage + comboBonusDamage) * Number(midweekEvent.raidDamageMultiplier || 1));
+  }
+
   const team = ['Nova', 'Cipher', 'Rune'].map((name, idx) => {
     const base = pseudoRandomNumber(`${name}-${toDateKey(weekStart)}-${idx}`, 180, 340);
     const consistencyBuff = Math.min(120, weekEntries.length * 18);
@@ -804,7 +841,10 @@ function getRaidStatus(entries, dateObj = toDate(getToday())) {
   });
 
   const teamDamage = team.reduce((sum, mate) => sum + mate.damage, 0);
-  const totalDamage = playerDamage + teamDamage;
+  const boostedTeamDamage = midweekEvent.active
+    ? Math.round(teamDamage * Number(midweekEvent.teamDamageMultiplier || 1))
+    : teamDamage;
+  const totalDamage = boostedPlayerDamage + boostedTeamDamage;
   const hp = Number(boss.weeklyHp || 1500);
   const hpLeft = Math.max(0, hp - totalDamage);
   const cleared = hpLeft === 0;
@@ -820,9 +860,15 @@ function getRaidStatus(entries, dateObj = toDate(getToday())) {
     boss,
     weekRange: `${toDateKey(weekStart)} to ${toDateKey(weekEnd)}`,
     hp,
-    playerDamage,
+    playerDamage: boostedPlayerDamage,
+    basePlayerDamage: playerDamage,
+    comboBonusDamage,
+    comboSteps,
+    streakForCombo: streakInfo.streak,
+    midweekEvent,
     team,
-    teamDamage,
+    teamDamage: boostedTeamDamage,
+    baseTeamDamage: teamDamage,
     totalDamage,
     hpLeft,
     clearPct,
@@ -986,10 +1032,10 @@ function calculateStats(entries) {
   const consistencyScore = Math.min(100, Math.round((weekActiveDays / 7) * 100));
   const elo = calculateEloProgress(entries);
   const season = getSeasonInfo(entries, today);
-  const raid = getRaidStatus(entries, today);
   const rewardsConfig = readRewardsConfig();
   const rewardsState = readRewardsState();
   const luckyEvent = getLuckyWeekendEvent(rewardsConfig, today);
+  const raid = getRaidStatus(entries, rewardsConfig, today);
   const streakBonus = getStreakMultiplier(currentStreak, rewardsConfig, luckyEvent);
   const boostedXp = Math.round(xp * streakBonus.multiplier);
   const chest = getDailyChestStatus(entries, { currentStreak }, rewardsConfig, rewardsState, getToday(), luckyEvent);
@@ -1106,7 +1152,7 @@ function renderDashboard(entries) {
   const leagueSection = `## Seasonal League\n- Season: **${stats.season.seasonId}** (${stats.season.seasonRange})\n- Tier: **${stats.season.tier}**\n- Points: **${stats.season.points}**\n${stats.season.nextTier ? `- Next Tier: **${stats.season.nextTier}** (need ${stats.season.toNext} pts)` : '- Max tier reached this season'}\n- ELO Rating: **${stats.elo.rating}** (${stats.elo.rank})\n${stats.elo.nextRank ? `- Next Rank: **${stats.elo.nextRank}** (need ${stats.elo.toNext})` : '- Top rank reached'}\n\n`;
 
   const raidSection = stats.raid
-    ? `## Weekly Raid Boss (Solo-Simulated Team)\n- Raid: **${stats.raid.boss.name}** [${stats.raid.boss.element}]\n- Week: **${stats.raid.weekRange}**\n- HP: **${stats.raid.hp}** | Damage: **${stats.raid.totalDamage}** | HP Left: **${stats.raid.hpLeft}**\n- Clear: **${stats.raid.clearPct}%** | Reward Tier: **${stats.raid.rewardTier}**\n- You: **${stats.raid.playerDamage} dmg** | Team: **${stats.raid.teamDamage} dmg**\n- Teammates: ${stats.raid.team.map((mate) => `${mate.name} ${mate.damage}`).join(', ')}\n\n`
+    ? `## Weekly Raid Boss (Solo-Simulated Team)\n- Raid: **${stats.raid.boss.name}** [${stats.raid.boss.element}]\n- Week: **${stats.raid.weekRange}**\n- HP: **${stats.raid.hp}** | Damage: **${stats.raid.totalDamage}** | HP Left: **${stats.raid.hpLeft}**\n- Clear: **${stats.raid.clearPct}%** | Reward Tier: **${stats.raid.rewardTier}**\n- You: **${stats.raid.playerDamage} dmg** | Team: **${stats.raid.teamDamage} dmg**\n${stats.raid.midweekEvent && stats.raid.midweekEvent.active ? `- Midweek Momentum: **ACTIVE** (+${stats.raid.comboBonusDamage} combo dmg, streak ${stats.raid.streakForCombo}, team mult x${stats.raid.midweekEvent.teamDamageMultiplier})\n` : ''}- Teammates: ${stats.raid.team.map((mate) => `${mate.name} ${mate.damage}`).join(', ')}\n\n`
     : '';
 
   const rewardsSection = `## Rewards Engine\n- Intensity: **${stats.streakBonus.intensity}**\n- Win Streak Multiplier: **x${stats.streakBonus.multiplier}** (cap x${stats.streakBonus.cap})\n- Boosted XP (effective): **${stats.boostedXp}**\n- Lucky Weekend Event: **${stats.luckyEvent.active ? `ACTIVE (${stats.luckyEvent.name})` : 'Inactive'}**\n${stats.luckyEvent.active ? `- Event Bonus: +${stats.luckyEvent.chestCoinBonus} chest coins, multiplier cap +${stats.luckyEvent.multiplierCapBonus}, boosted rarity odds\n- Event Tagline: ${stats.luckyEvent.tagline}\n` : ''}- Daily Chest: **${stats.chest.claimed ? 'Claimed' : 'Available'}**\n- Chest ${stats.chest.claimed ? 'Loot' : 'Preview'}: **${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rarity}** (+${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.coins} coins, +${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.tokens} tokens, +${(stats.chest.claimed ? stats.chest.claim : stats.chest.preview).rewards.gems} gems)\n- Wallet: **${stats.chest.wallet.coins} coins / ${stats.chest.wallet.tokens} tokens / ${stats.chest.wallet.gems} gems**\n\n`;
@@ -1182,6 +1228,9 @@ function addEntry(args) {
   }
   if (stats.raid) {
     console.log(`🧨 Raid: ${stats.raid.boss.name} ${stats.raid.clearPct}% (${stats.raid.totalDamage}/${stats.raid.hp})`);
+    if (stats.raid.midweekEvent && stats.raid.midweekEvent.active) {
+      console.log(`⚡ Midweek Momentum ACTIVE: +${stats.raid.comboBonusDamage} combo dmg (streak ${stats.raid.streakForCombo})`);
+    }
   }
   console.log(`🎁 Daily chest: ${stats.chest.claimed ? 'already claimed' : 'available now'} (use npm run lc:chest -- --open)`);
   if (bossStatus) {
@@ -1315,6 +1364,10 @@ function showRaid(entries) {
   console.log(`- Reward Tier: ${stats.raid.rewardTier}`);
   console.log(`- You: ${stats.raid.playerDamage} dmg`);
   console.log(`- Team: ${stats.raid.teamDamage} dmg`);
+  if (stats.raid.midweekEvent && stats.raid.midweekEvent.active) {
+    console.log(`- Midweek Momentum: ACTIVE`);
+    console.log(`  combo bonus => +${stats.raid.comboBonusDamage} (steps ${stats.raid.comboSteps}, streak ${stats.raid.streakForCombo})`);
+  }
   console.log(`- Allies: ${stats.raid.team.map((mate) => `${mate.name}:${mate.damage}`).join(', ')}`);
 }
 

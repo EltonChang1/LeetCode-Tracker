@@ -65,6 +65,16 @@ const fallbackRewardsConfig = {
     chestCoinBonus: 25,
     tagline: 'Fortune favors consistency. Weekend rewards are juiced.',
   },
+  midweekEvent: {
+    enabled: true,
+    days: [2, 3, 4],
+    name: 'Midweek Momentum',
+    raidDamageMultiplier: 1.2,
+    teamDamageMultiplier: 1.08,
+    comboStep: 3,
+    comboBonusPerStep: 35,
+    tagline: 'Combo chains empower your raid squad Tuesday through Thursday.',
+  },
 };
 
 const fallbackRewardsState = {
@@ -355,6 +365,16 @@ function luckyWeekendEvent(rewardsConfig) {
   };
 }
 
+function midweekMomentumEvent(rewardsConfig) {
+  const event = rewardsConfig.midweekEvent || fallbackRewardsConfig.midweekEvent;
+  const days = Array.isArray(event.days) && event.days.length ? event.days : [2, 3, 4];
+  const active = Boolean(event.enabled) && days.includes(new Date().getDay());
+  return {
+    ...event,
+    active,
+  };
+}
+
 function boostedWeights(weights, event) {
   const source = { ...weights };
   if (!event.active) return source;
@@ -408,13 +428,15 @@ function chestStatus(entries, currentStreak, rewardsConfig, rewardsState) {
   };
 }
 
-function raidStatus(entries, raidBosses) {
+function raidStatus(entries, raidBosses, rewardsConfig) {
   const today = toDate(todayKey());
   const weekStart = getWeekStartMonday(today);
   const weekEnd = addDays(weekStart, 6);
   const weekIndex = getWeekIndex(today);
   const boss = raidBosses[weekIndex % raidBosses.length];
   if (!boss) return null;
+
+  const midweek = midweekMomentumEvent(rewardsConfig);
 
   const weakness = new Set((boss.weaknessTags || []).map((tag) => String(tag).toLowerCase()));
   const weekEntries = entries.filter((entry) => {
@@ -429,6 +451,15 @@ function raidStatus(entries, raidBosses) {
     playerDamage += base + weaknessBonus;
   }
 
+  const dates = new Set(entries.map((entry) => entry.solvedAt));
+  const streakInfo = calculateProtectedStreak(dates, today);
+  const comboStep = Math.max(1, Number(midweek.comboStep || 3));
+  const comboSteps = Math.floor(Math.max(0, streakInfo.streak) / comboStep);
+  const comboBonusDamage = midweek.active ? comboSteps * Number(midweek.comboBonusPerStep || 0) : 0;
+  const boostedPlayerDamage = midweek.active
+    ? Math.round((playerDamage + comboBonusDamage) * Number(midweek.raidDamageMultiplier || 1))
+    : playerDamage;
+
   const allies = ['Nova', 'Cipher', 'Rune'].map((name, idx) => ({
     name,
     damage: pseudoRandomNumber(`${name}-${key(weekStart)}-${idx}`, 180, 340) + Math.min(120, weekEntries.length * 18),
@@ -436,7 +467,10 @@ function raidStatus(entries, raidBosses) {
 
   const teamDamage = allies.reduce((sum, ally) => sum + ally.damage, 0);
   const hp = Number(boss.weeklyHp || 1500);
-  const totalDamage = playerDamage + teamDamage;
+  const boostedTeamDamage = midweek.active
+    ? Math.round(teamDamage * Number(midweek.teamDamageMultiplier || 1))
+    : teamDamage;
+  const totalDamage = boostedPlayerDamage + boostedTeamDamage;
   const hpLeft = Math.max(0, hp - totalDamage);
   const clearPct = Math.round((Math.min(totalDamage, hp) / hp) * 100);
   const rewardTier = clearPct >= 100 ? 'Legendary' : clearPct >= 80 ? 'Epic' : clearPct >= 55 ? 'Rare' : 'Common';
@@ -446,12 +480,18 @@ function raidStatus(entries, raidBosses) {
     weekRange: `${key(weekStart)} to ${key(weekEnd)}`,
     hp,
     totalDamage,
-    playerDamage,
-    teamDamage,
+    playerDamage: boostedPlayerDamage,
+    basePlayerDamage: playerDamage,
+    comboBonusDamage,
+    comboSteps,
+    streakForCombo: streakInfo.streak,
+    teamDamage: boostedTeamDamage,
+    baseTeamDamage: teamDamage,
     hpLeft,
     clearPct,
     rewardTier,
     allies,
+    midweek,
   };
 }
 
@@ -619,10 +659,10 @@ function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewar
   document.getElementById('leaguePoints').textContent = `Points ${league.points}${league.nextTier ? ` · Next ${league.nextTier} in ${league.toNext}` : ' · Max tier'}`;
   document.getElementById('eloLine').textContent = `ELO ${elo.rating} (${elo.rank})${elo.nextRank ? ` · Next ${elo.nextRank} in ${elo.toNext}` : ''}`;
 
-  const raid = raidStatus(entries, raidBosses);
+  const raid = raidStatus(entries, raidBosses, rewardsConfig);
   if (raid) {
-    document.getElementById('raidBoss').textContent = `${raid.boss.name} · ${raid.clearPct}% · ${raid.rewardTier}`;
-    document.getElementById('raidDamage').textContent = `Damage ${raid.totalDamage}/${raid.hp} · You ${raid.playerDamage} · Team ${raid.teamDamage}`;
+    document.getElementById('raidBoss').textContent = `${raid.boss.name} · ${raid.clearPct}% · ${raid.rewardTier}${raid.midweek && raid.midweek.active ? ' · ⚡ Midweek' : ''}`;
+    document.getElementById('raidDamage').textContent = `Damage ${raid.totalDamage}/${raid.hp} · You ${raid.playerDamage} · Team ${raid.teamDamage}${raid.midweek && raid.midweek.active ? ` · Combo +${raid.comboBonusDamage}` : ''}`;
     document.getElementById('raidAllies').textContent = `Allies: ${raid.allies.map((ally) => `${ally.name}:${ally.damage}`).join(', ')}`;
   }
 
