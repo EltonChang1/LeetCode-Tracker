@@ -40,6 +40,33 @@ const fallbackRaidBosses = [
   },
 ];
 
+const fallbackRewardsConfig = {
+  intensity: 'balanced',
+  intensities: {
+    casual: { multiplierStep: 0.05, maxMultiplier: 1.6, streakPerStep: 3, baseChestBoost: 0 },
+    balanced: { multiplierStep: 0.1, maxMultiplier: 2.2, streakPerStep: 3, baseChestBoost: 1 },
+    hardcore: { multiplierStep: 0.15, maxMultiplier: 3, streakPerStep: 2, baseChestBoost: 2 },
+  },
+  chest: {
+    rarityWeights: { common: 58, rare: 28, epic: 11, legendary: 3 },
+    rewards: {
+      common: { coins: [40, 80], tokens: [0, 1], gems: [0, 0] },
+      rare: { coins: [90, 170], tokens: [1, 3], gems: [0, 1] },
+      epic: { coins: [180, 320], tokens: [2, 5], gems: [2, 5] },
+      legendary: { coins: [350, 550], tokens: [5, 10], gems: [6, 12] },
+    },
+  },
+};
+
+const fallbackRewardsState = {
+  wallet: {
+    coins: 0,
+    tokens: 0,
+    gems: 0,
+  },
+  claims: {},
+};
+
 const fallbackBosses = [
   {
     id: 'array-overlord',
@@ -173,12 +200,14 @@ function calcStats(entries) {
 }
 
 async function loadData() {
-  const [entriesRes, profileRes, bossesRes, leagueRes, raidRes] = await Promise.all([
+  const [entriesRes, profileRes, bossesRes, leagueRes, raidRes, rewardsRes, rewardsStateRes] = await Promise.all([
     fetch(`/progress/entries.json?ts=${Date.now()}`),
     fetch(`/progress/profile.json?ts=${Date.now()}`),
     fetch(`/progress/bosses.json?ts=${Date.now()}`),
     fetch(`/progress/leagues.json?ts=${Date.now()}`),
     fetch(`/progress/raid-bosses.json?ts=${Date.now()}`),
+    fetch(`/progress/rewards.json?ts=${Date.now()}`),
+    fetch(`/progress/rewards-state.json?ts=${Date.now()}`),
   ]);
 
   const entries = entriesRes.ok ? await entriesRes.json() : [];
@@ -186,12 +215,16 @@ async function loadData() {
   const bosses = bossesRes.ok ? await bossesRes.json() : fallbackBosses;
   const league = leagueRes.ok ? await leagueRes.json() : fallbackLeagueConfig;
   const raidBosses = raidRes.ok ? await raidRes.json() : fallbackRaidBosses;
+  const rewardsConfig = rewardsRes.ok ? await rewardsRes.json() : fallbackRewardsConfig;
+  const rewardsState = rewardsStateRes.ok ? await rewardsStateRes.json() : fallbackRewardsState;
   return {
     entries: Array.isArray(entries) ? entries : [],
     profile,
     bosses: Array.isArray(bosses) && bosses.length ? bosses : fallbackBosses,
     league: league && typeof league === 'object' ? league : fallbackLeagueConfig,
     raidBosses: Array.isArray(raidBosses) && raidBosses.length ? raidBosses : fallbackRaidBosses,
+    rewardsConfig: rewardsConfig && typeof rewardsConfig === 'object' ? rewardsConfig : fallbackRewardsConfig,
+    rewardsState: rewardsState && typeof rewardsState === 'object' ? rewardsState : fallbackRewardsState,
   };
 }
 
@@ -279,6 +312,65 @@ function pseudoRandomNumber(seedText, min, max) {
   }
   const ratio = value / 1000000;
   return Math.floor(min + ratio * (max - min + 1));
+}
+
+function getIntensityProfile(rewardsConfig) {
+  const keyName = rewardsConfig.intensity || 'balanced';
+  const selected = (rewardsConfig.intensities && rewardsConfig.intensities[keyName]) || rewardsConfig.intensities.balanced;
+  return {
+    key: keyName,
+    ...selected,
+  };
+}
+
+function getStreakMultiplier(currentStreak, rewardsConfig) {
+  const profile = getIntensityProfile(rewardsConfig);
+  const steps = Math.floor(Math.max(0, currentStreak) / Math.max(1, profile.streakPerStep || 3));
+  const raw = 1 + steps * (profile.multiplierStep || 0.1);
+  return {
+    intensity: profile.key,
+    multiplier: Number(Math.min(profile.maxMultiplier || 2, raw).toFixed(2)),
+  };
+}
+
+function pickWeightedRarity(weights, seedText) {
+  const pairs = Object.entries(weights || {}).filter(([, value]) => Number(value) > 0);
+  if (!pairs.length) return 'common';
+  const total = pairs.reduce((sum, [, value]) => sum + Number(value), 0);
+  const roll = pseudoRandomNumber(`${seedText}-rarity`, 1, total);
+  let cursor = 0;
+  for (const [name, value] of pairs) {
+    cursor += Number(value);
+    if (roll <= cursor) return name;
+  }
+  return pairs[pairs.length - 1][0];
+}
+
+function chestPreview(entries, currentStreak, rewardsConfig) {
+  const today = todayKey();
+  const profile = getIntensityProfile(rewardsConfig);
+  const chest = rewardsConfig.chest || fallbackRewardsConfig.chest;
+  const rarity = pickWeightedRarity(chest.rarityWeights, `${today}-${entries.length}-${currentStreak}-${profile.key}`);
+  const rewardRange = chest.rewards[rarity] || chest.rewards.common;
+  const boost = Math.max(0, profile.baseChestBoost || 0);
+  return {
+    rarity,
+    rewards: {
+      coins: pseudoRandomNumber(`${today}-${rarity}-coins`, rewardRange.coins[0], rewardRange.coins[1]) + boost * 10,
+      tokens: pseudoRandomNumber(`${today}-${rarity}-tokens`, rewardRange.tokens[0], rewardRange.tokens[1]) + Math.floor(boost / 2),
+      gems: pseudoRandomNumber(`${today}-${rarity}-gems`, rewardRange.gems[0], rewardRange.gems[1]),
+    },
+  };
+}
+
+function chestStatus(entries, currentStreak, rewardsConfig, rewardsState) {
+  const claim = (rewardsState.claims && rewardsState.claims[todayKey()]) || null;
+  return {
+    claimed: Boolean(claim),
+    claim,
+    preview: chestPreview(entries, currentStreak, rewardsConfig),
+    wallet: (rewardsState.wallet || fallbackRewardsState.wallet),
+  };
 }
 
 function raidStatus(entries, raidBosses) {
@@ -411,7 +503,7 @@ function nudge(stats) {
   return 'Tiny start wins: open one problem and code for 2 minutes.';
 }
 
-function render(stats, profile, entries, bosses, leagueConfig, raidBosses) {
+function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewardsConfig, rewardsState) {
   document.getElementById('todayLine').textContent = `Today: ${todayKey()} · ${stats.todayCount} solve(s)`;
   document.getElementById('currentStreak').textContent = `${stats.currentStreak}d`;
   document.getElementById('longestStreak').textContent = `${stats.longestStreak}d`;
@@ -498,13 +590,22 @@ function render(stats, profile, entries, bosses, leagueConfig, raidBosses) {
     document.getElementById('raidDamage').textContent = `Damage ${raid.totalDamage}/${raid.hp} · You ${raid.playerDamage} · Team ${raid.teamDamage}`;
     document.getElementById('raidAllies').textContent = `Allies: ${raid.allies.map((ally) => `${ally.name}:${ally.damage}`).join(', ')}`;
   }
+
+  const multiplier = getStreakMultiplier(stats.currentStreak, rewardsConfig);
+  const chest = chestStatus(entries, stats.currentStreak, rewardsConfig, rewardsState);
+  const chestLoot = chest.claimed ? chest.claim : chest.preview;
+
+  document.getElementById('multiplierLine').textContent = `x${multiplier.multiplier} [${multiplier.intensity}]`;
+  document.getElementById('boostedXpLine').textContent = `Boosted XP: ${Math.round(stats.xp * multiplier.multiplier)} (base ${stats.xp})`;
+  document.getElementById('chestLine').textContent = `${chest.claimed ? 'Claimed' : 'Ready'} · ${chestLoot.rarity} · +${chestLoot.rewards.coins}c +${chestLoot.rewards.tokens}t +${chestLoot.rewards.gems}g`;
+  document.getElementById('walletLine').textContent = `Wallet: ${chest.wallet.coins} coins · ${chest.wallet.tokens} tokens · ${chest.wallet.gems} gems`;
 }
 
 async function bootstrap() {
   try {
-    const { entries, profile, bosses, league, raidBosses } = await loadData();
+    const { entries, profile, bosses, league, raidBosses, rewardsConfig, rewardsState } = await loadData();
     const stats = calcStats(entries);
-    render(stats, profile, entries, bosses, league, raidBosses);
+    render(stats, profile, entries, bosses, league, raidBosses, rewardsConfig, rewardsState);
   } catch (err) {
     document.getElementById('todayLine').textContent = `Failed to load progress data: ${err.message}`;
   }

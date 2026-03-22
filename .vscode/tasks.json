@@ -38,6 +38,12 @@
       "problemMatcher": []
     },
     {
+      "label": "LeetCode: Open Daily Chest",
+      "type": "shell",
+      "command": "npm run lc:chest -- --open",
+      "problemMatcher": []
+    },
+    {
       "label": "LeetCode: Game Dashboard",
       "type": "shell",
       "command": "npm run lc:web",

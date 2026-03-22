@@ -13,6 +13,8 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - 🏟️ Seasonal leagues with tier ladders
 - 📈 ELO-style rank progression (Iron → Grandmaster)
 - 🛡️ Weekly raid boss mode with solo-simulated teammate squad
+- 🎁 Daily loot chest with persistent wallet
+- ✨ Win streak multiplier with configurable intensity
 - 🎯 Daily mission with low-friction start prompt
 - 📈 Weekly consistency score (0-100)
 - 📊 Auto-generated dashboard (`DASHBOARD.md`)
@@ -32,6 +34,7 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
    - `npm run lc:boss`
    - `npm run lc:league`
    - `npm run lc:raid`
+   - `npm run lc:chest -- --open`
    - `npm run lc:dashboard`
    - `npm run lc:web` then open `http://localhost:4321`
 5. Daily update to GitHub:
@@ -58,9 +61,10 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 3. Beat weekly boss milestones in `npm run lc:boss`.
 4. Track season and ELO progress in `npm run lc:league`.
 5. Push weekly raid damage in `npm run lc:raid`.
-6. Log solve with `npm run lc:add -- ...`
-7. Watch streak shield, XP, achievements, boss tier, league rank, and raid progress update.
-8. End session with `npm run lc:push`.
+6. Open chest reward: `npm run lc:chest -- --open`.
+7. Log solve with `npm run lc:add -- ...`
+8. Watch streak shield, multiplier, chest wallet, achievements, boss tier, league rank, and raid progress update.
+9. End session with `npm run lc:push`.
 
 ## Boss Configuration
 - Boss catalog is stored in `progress/bosses.json`.
@@ -70,6 +74,10 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 ## League + Raid Configuration
 - League tiers and season settings: `progress/leagues.json`
 - Raid roster and weekly HP settings: `progress/raid-bosses.json`
+
+## Rewards Configuration
+- Intensity and chest tuning: `progress/rewards.json`
+- Persistent wallet + daily claims: `progress/rewards-state.json`
 
 ## Add Entry Command
 ```bash

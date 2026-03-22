@@ -1,0 +1,53 @@
+{
+  "intensity": "balanced",
+  "intensities": {
+    "casual": {
+      "multiplierStep": 0.05,
+      "maxMultiplier": 1.6,
+      "streakPerStep": 3,
+      "baseChestBoost": 0
+    },
+    "balanced": {
+      "multiplierStep": 0.1,
+      "maxMultiplier": 2.2,
+      "streakPerStep": 3,
+      "baseChestBoost": 1
+    },
+    "hardcore": {
+      "multiplierStep": 0.15,
+      "maxMultiplier": 3,
+      "streakPerStep": 2,
+      "baseChestBoost": 2
+    }
+  },
+  "chest": {
+    "rarityWeights": {
+      "common": 58,
+      "rare": 28,
+      "epic": 11,
+      "legendary": 3
+    },
+    "rewards": {
+      "common": {
+        "coins": [40, 80],
+        "tokens": [0, 1],
+        "gems": [0, 0]
+      },
+      "rare": {
+        "coins": [90, 170],
+        "tokens": [1, 3],
+        "gems": [0, 1]
+      },
+      "epic": {
+        "coins": [180, 320],
+        "tokens": [2, 5],
+        "gems": [2, 5]
+      },
+      "legendary": {
+        "coins": [350, 550],
+        "tokens": [5, 10],
+        "gems": [6, 12]
+      }
+    }
+  }
+}

@@ -14,6 +14,14 @@
 - Solve 1 easy problem in ≤ 20 min. Start with a 2-minute timer, not motivation.
 - Nudge: Keep the promise tiny: one easy problem, then stop if needed.
 
+## Rewards Engine
+- Intensity: **balanced**
+- Win Streak Multiplier: **x1**
+- Boosted XP (effective): **0**
+- Daily Chest: **Available**
+- Chest Preview: **common** (+85 coins, +1 tokens, +0 gems)
+- Wallet: **0 coins / 0 tokens / 0 gems**
+
 ## Seasonal League
 - Season: **S1** (2026-01-01 to 2026-03-31)
 - Tier: **Bronze**
