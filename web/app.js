@@ -1,6 +1,21 @@
 const points = { easy: 10, medium: 20, hard: 40 };
 const FREEZE_WINDOW_DAYS = 14;
 
+const fallbackBosses = [
+  {
+    id: 'array-overlord',
+    name: 'Array Overlord',
+    theme: 'arrays, pointers, and windows',
+    requiredTags: ['array', 'two-pointers', 'sliding-window'],
+    tiers: [
+      { name: 'Bronze', requirements: { solves: 3 } },
+      { name: 'Silver', requirements: { solves: 5, mediumPlus: 2 } },
+      { name: 'Gold', requirements: { solves: 7, mediumPlus: 3 } },
+      { name: 'Diamond', requirements: { solves: 10, hard: 1 } },
+    ],
+  },
+];
+
 const toDate = (s) => new Date(`${s}T00:00:00`);
 const addDays = (d, n) => {
   const r = new Date(d);
@@ -9,6 +24,19 @@ const addDays = (d, n) => {
 };
 const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const missesAllowedForSpan = (spanDays) => Math.ceil(spanDays / FREEZE_WINDOW_DAYS);
+
+const getWeekStartMonday = (d) => {
+  const result = new Date(d);
+  const day = result.getDay();
+  const distance = day === 0 ? 6 : day - 1;
+  result.setDate(result.getDate() - distance);
+  return new Date(`${key(result)}T00:00:00`);
+};
+
+const getWeekIndex = (d) => {
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil((((d - yearStart) / 86400000) + yearStart.getDay() + 1) / 7);
+};
 
 function todayKey() {
   const d = new Date();
@@ -106,14 +134,91 @@ function calcStats(entries) {
 }
 
 async function loadData() {
-  const [entriesRes, profileRes] = await Promise.all([
+  const [entriesRes, profileRes, bossesRes] = await Promise.all([
     fetch(`/progress/entries.json?ts=${Date.now()}`),
     fetch(`/progress/profile.json?ts=${Date.now()}`),
+    fetch(`/progress/bosses.json?ts=${Date.now()}`),
   ]);
 
   const entries = entriesRes.ok ? await entriesRes.json() : [];
   const profile = profileRes.ok ? await profileRes.json() : { dailyMinimum: 1, targetMinutes: 20, preferredWarmupDifficulty: 'easy' };
-  return { entries: Array.isArray(entries) ? entries : [], profile };
+  const bosses = bossesRes.ok ? await bossesRes.json() : fallbackBosses;
+  return {
+    entries: Array.isArray(entries) ? entries : [],
+    profile,
+    bosses: Array.isArray(bosses) && bosses.length ? bosses : fallbackBosses,
+  };
+}
+
+function checkReq(progress, req = {}) {
+  const needed = {
+    solves: req.solves || 0,
+    mediumPlus: req.mediumPlus || 0,
+    hard: req.hard || 0,
+    tagHits: req.tagHits || 0,
+  };
+
+  return {
+    passed:
+      progress.solves >= needed.solves &&
+      progress.mediumPlus >= needed.mediumPlus &&
+      progress.hard >= needed.hard &&
+      progress.tagHits >= needed.tagHits,
+    needed,
+  };
+}
+
+function bossStatus(entries, bosses) {
+  const today = toDate(todayKey());
+  const weekIndex = getWeekIndex(today);
+  const boss = bosses[weekIndex % bosses.length];
+
+  if (!boss) return null;
+
+  const weekStart = getWeekStartMonday(today);
+  const weekEnd = addDays(weekStart, 6);
+  const tags = new Set((boss.requiredTags || []).map((t) => String(t).toLowerCase()));
+
+  const weekEntries = entries.filter((entry) => {
+    const d = toDate(entry.solvedAt);
+    return d >= weekStart && d <= weekEnd;
+  });
+
+  const progress = {
+    solves: weekEntries.length,
+    mediumPlus: weekEntries.filter((e) => e.difficulty === 'medium' || e.difficulty === 'hard').length,
+    hard: weekEntries.filter((e) => e.difficulty === 'hard').length,
+    tagHits: weekEntries.filter((e) => (e.tags || []).some((tag) => tags.has(String(tag).toLowerCase()))).length,
+  };
+
+  let achievedTier = null;
+  let nextTier = null;
+
+  for (const tier of boss.tiers || []) {
+    const result = checkReq(progress, tier.requirements || {});
+    if (result.passed) {
+      achievedTier = tier;
+    } else if (!nextTier) {
+      nextTier = {
+        ...tier,
+        remaining: {
+          solves: Math.max(0, result.needed.solves - progress.solves),
+          mediumPlus: Math.max(0, result.needed.mediumPlus - progress.mediumPlus),
+          hard: Math.max(0, result.needed.hard - progress.hard),
+          tagHits: Math.max(0, result.needed.tagHits - progress.tagHits),
+        },
+      };
+      break;
+    }
+  }
+
+  return {
+    boss,
+    progress,
+    achievedTier,
+    nextTier,
+    weekRange: `${key(weekStart)} to ${key(weekEnd)}`,
+  };
 }
 
 function missionText(stats, profile) {
@@ -128,7 +233,7 @@ function nudge(stats) {
   return 'Tiny start wins: open one problem and code for 2 minutes.';
 }
 
-function render(stats, profile) {
+function render(stats, profile, entries, bosses) {
   document.getElementById('todayLine').textContent = `Today: ${todayKey()} · ${stats.todayCount} solve(s)`;
   document.getElementById('currentStreak').textContent = `${stats.currentStreak}d`;
   document.getElementById('longestStreak').textContent = `${stats.longestStreak}d`;
@@ -177,13 +282,38 @@ function render(stats, profile) {
       recent.appendChild(li);
     }
   }
+
+  const status = bossStatus(entries, bosses);
+  if (status) {
+    document.getElementById('bossName').textContent = `${status.boss.name} · ${status.achievedTier ? status.achievedTier.name : 'Unranked'}`;
+    document.getElementById('bossTheme').textContent = `${status.boss.theme} (${status.weekRange})`;
+    document.getElementById('bossProgress').textContent = `solves=${status.progress.solves}, medium+=${status.progress.mediumPlus}, hard=${status.progress.hard}, themeHits=${status.progress.tagHits}`;
+
+    const tiers = document.getElementById('bossTiers');
+    tiers.innerHTML = '';
+    for (const tier of status.boss.tiers || []) {
+      const chip = document.createElement('span');
+      const isReached = status.achievedTier && status.boss.tiers.findIndex((t) => t.name === status.achievedTier.name) >= status.boss.tiers.findIndex((t) => t.name === tier.name);
+      const isNext = status.nextTier && status.nextTier.name === tier.name;
+      chip.className = `chip ${isReached ? 'tier-on' : ''} ${isNext ? 'tier-next' : ''}`.trim();
+      chip.textContent = tier.name;
+      tiers.appendChild(chip);
+    }
+
+    const nextHint = document.getElementById('nextTierHint');
+    if (status.nextTier) {
+      nextHint.textContent = `Next ${status.nextTier.name}: solves +${status.nextTier.remaining.solves}, medium+ +${status.nextTier.remaining.mediumPlus}, hard +${status.nextTier.remaining.hard}, themeHits +${status.nextTier.remaining.tagHits}`;
+    } else {
+      nextHint.textContent = 'Diamond tier cleared. Weekly boss defeated.';
+    }
+  }
 }
 
 async function bootstrap() {
   try {
-    const { entries, profile } = await loadData();
+    const { entries, profile, bosses } = await loadData();
     const stats = calcStats(entries);
-    render(stats, profile);
+    render(stats, profile, entries, bosses);
   } catch (err) {
     document.getElementById('todayLine').textContent = `Failed to load progress data: ${err.message}`;
   }

@@ -7,6 +7,7 @@ const rootDir = path.resolve(__dirname, '..');
 const entriesPath = path.join(rootDir, 'progress', 'entries.json');
 const dashboardPath = path.join(rootDir, 'DASHBOARD.md');
 const profilePath = path.join(rootDir, 'progress', 'profile.json');
+const bossesPath = path.join(rootDir, 'progress', 'bosses.json');
 
 const pointsByDifficulty = {
   easy: 10,
@@ -58,6 +59,37 @@ function readProfile() {
     };
   } catch {
     return defaults;
+  }
+}
+
+function readBosses() {
+  const fallback = [
+    {
+      id: 'array-overlord',
+      name: 'Array Overlord',
+      theme: 'arrays, pointers, and windows',
+      requiredTags: ['array', 'two-pointers', 'sliding-window'],
+      tiers: [
+        { name: 'Bronze', requirements: { solves: 3 } },
+        { name: 'Silver', requirements: { solves: 5, mediumPlus: 2 } },
+        { name: 'Gold', requirements: { solves: 7, mediumPlus: 3 } },
+        { name: 'Diamond', requirements: { solves: 10, hard: 1 } },
+      ],
+    },
+  ];
+
+  if (!fs.existsSync(bossesPath)) {
+    fs.writeFileSync(bossesPath, JSON.stringify(fallback, null, 2) + '\n', 'utf8');
+    return fallback;
+  }
+
+  try {
+    const raw = fs.readFileSync(bossesPath, 'utf8').trim();
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length ? parsed : fallback;
+  } catch {
+    return fallback;
   }
 }
 
@@ -272,6 +304,116 @@ function randomPick(list, seedSource) {
   return list[seed % list.length];
 }
 
+function getWeekStartMonday(dateObj) {
+  const result = new Date(dateObj);
+  const day = result.getDay();
+  const distance = day === 0 ? 6 : day - 1;
+  result.setDate(result.getDate() - distance);
+  return new Date(`${toDateKey(result)}T00:00:00`);
+}
+
+function getWeekIndex(dateObj) {
+  const yearStart = new Date(dateObj.getFullYear(), 0, 1);
+  return Math.ceil((((dateObj - yearStart) / 86400000) + yearStart.getDay() + 1) / 7);
+}
+
+function getCurrentBoss(dateObj = toDate(getToday())) {
+  const bosses = readBosses();
+  if (!bosses.length) {
+    return null;
+  }
+  const weekIndex = getWeekIndex(dateObj);
+  return bosses[weekIndex % bosses.length];
+}
+
+function checkRequirements(progress, requirements = {}) {
+  const needed = {
+    solves: requirements.solves || 0,
+    mediumPlus: requirements.mediumPlus || 0,
+    hard: requirements.hard || 0,
+    tagHits: requirements.tagHits || 0,
+  };
+
+  return {
+    passed:
+      progress.solves >= needed.solves &&
+      progress.mediumPlus >= needed.mediumPlus &&
+      progress.hard >= needed.hard &&
+      progress.tagHits >= needed.tagHits,
+    needed,
+  };
+}
+
+function getBossProgress(entries, dateObj = toDate(getToday())) {
+  const boss = getCurrentBoss(dateObj);
+  if (!boss) {
+    return null;
+  }
+
+  const weekStart = getWeekStartMonday(dateObj);
+  const weekEnd = addDays(weekStart, 6);
+
+  const weekEntries = entries.filter((entry) => {
+    const d = toDate(entry.solvedAt);
+    return d >= weekStart && d <= weekEnd;
+  });
+
+  const tagSet = new Set((boss.requiredTags || []).map((tag) => String(tag).toLowerCase()));
+
+  let tagHits = 0;
+  let mediumPlus = 0;
+  let hard = 0;
+
+  for (const entry of weekEntries) {
+    if (entry.difficulty === 'medium' || entry.difficulty === 'hard') {
+      mediumPlus += 1;
+    }
+    if (entry.difficulty === 'hard') {
+      hard += 1;
+    }
+    const hasTag = (entry.tags || []).some((tag) => tagSet.has(String(tag).toLowerCase()));
+    if (hasTag) {
+      tagHits += 1;
+    }
+  }
+
+  const progress = {
+    solves: weekEntries.length,
+    mediumPlus,
+    hard,
+    tagHits,
+  };
+
+  let achievedTier = null;
+  let nextTier = null;
+
+  for (const tier of boss.tiers || []) {
+    const result = checkRequirements(progress, tier.requirements || {});
+    if (result.passed) {
+      achievedTier = tier;
+    } else if (!nextTier) {
+      nextTier = {
+        ...tier,
+        remaining: {
+          solves: Math.max(0, result.needed.solves - progress.solves),
+          mediumPlus: Math.max(0, result.needed.mediumPlus - progress.mediumPlus),
+          hard: Math.max(0, result.needed.hard - progress.hard),
+          tagHits: Math.max(0, result.needed.tagHits - progress.tagHits),
+        },
+      };
+      break;
+    }
+  }
+
+  return {
+    boss,
+    weekRange: `${toDateKey(weekStart)} to ${toDateKey(weekEnd)}`,
+    progress,
+    achievedTier,
+    nextTier,
+  };
+}
+
 function calculateStats(entries) {
   const total = entries.length;
   const byDifficulty = { easy: 0, medium: 0, hard: 0 };
@@ -407,13 +549,18 @@ function renderDashboard(entries) {
   const achievements = getAchievements(stats);
   const mission = getDailyMission(stats, profile);
   const nudge = getNudge(stats);
+  const bossStatus = getBossProgress(entries);
   const recentLines = stats.recent.length
     ? stats.recent
         .map((e) => `- ${e.solvedAt} · #${e.id} ${e.title} (${formatDifficulty(e.difficulty)}) [${e.language}]`) 
         .join('\n')
     : '- No solves yet. Add your first one today 🚀';
 
-  const markdown = `# LeetCode Progress Dashboard\n\n## Snapshot\n- Total Solved: **${stats.total}**\n- Solved Days: **${stats.solvedDays}**\n- Current Streak: **${stats.currentStreak} day(s)**\n- Longest Streak: **${stats.longestStreak} day(s)**\n- XP: **${stats.xp}**\n- Level: **${stats.level}**\n- Streak Shield: **${stats.freezeMissesUsed}/${stats.freezeMissesAllowed} miss used** (1 miss allowed per 14 days)\n\n## Daily Mission\n- ${mission.title}\n- ${mission.detail}\n- Nudge: ${nudge}\n\n## Consistency Score\n- Last 7 active days: **${stats.weekActiveDays}/7**\n- Consistency score: **${stats.consistencyScore}/100**\n\n## Difficulty Breakdown\n- Easy: **${stats.byDifficulty.easy}**\n- Medium: **${stats.byDifficulty.medium}**\n- Hard: **${stats.byDifficulty.hard}**\n\n## 14-Day Consistency\n${renderWeekBar(entries)}\n\n## Achievements\n${achievements.map((a) => `- ${a}`).join('\n')}\n\n## Recent Solves\n${recentLines}\n\n---\nAuto-generated by \`npm run lc:dashboard\`.\n`;
+  const bossSection = bossStatus
+    ? `## Weekly Boss Fight\n- Boss: **${bossStatus.boss.name}** (${bossStatus.boss.theme})\n- Week: **${bossStatus.weekRange}**\n- Progress: solves=${bossStatus.progress.solves}, medium+=${bossStatus.progress.mediumPlus}, hard=${bossStatus.progress.hard}, themeHits=${bossStatus.progress.tagHits}\n- Reward Tier: **${bossStatus.achievedTier ? bossStatus.achievedTier.name : 'Unranked'}**\n${bossStatus.nextTier ? `- Next Tier: **${bossStatus.nextTier.name}** (remaining: solves ${bossStatus.nextTier.remaining.solves}, medium+ ${bossStatus.nextTier.remaining.mediumPlus}, hard ${bossStatus.nextTier.remaining.hard}, themeHits ${bossStatus.nextTier.remaining.tagHits})` : '- Max tier reached this week: **Diamond**'}\n\n`
+    : '';
+
+  const markdown = `# LeetCode Progress Dashboard\n\n## Snapshot\n- Total Solved: **${stats.total}**\n- Solved Days: **${stats.solvedDays}**\n- Current Streak: **${stats.currentStreak} day(s)**\n- Longest Streak: **${stats.longestStreak} day(s)**\n- XP: **${stats.xp}**\n- Level: **${stats.level}**\n- Streak Shield: **${stats.freezeMissesUsed}/${stats.freezeMissesAllowed} miss used** (1 miss allowed per 14 days)\n\n## Daily Mission\n- ${mission.title}\n- ${mission.detail}\n- Nudge: ${nudge}\n\n${bossSection}## Consistency Score\n- Last 7 active days: **${stats.weekActiveDays}/7**\n- Consistency score: **${stats.consistencyScore}/100**\n\n## Difficulty Breakdown\n- Easy: **${stats.byDifficulty.easy}**\n- Medium: **${stats.byDifficulty.medium}**\n- Hard: **${stats.byDifficulty.hard}**\n\n## 14-Day Consistency\n${renderWeekBar(entries)}\n\n## Achievements\n${achievements.map((a) => `- ${a}`).join('\n')}\n\n## Recent Solves\n${recentLines}\n\n---\nAuto-generated by \`npm run lc:dashboard\`.\n`;
 
   fs.writeFileSync(dashboardPath, markdown, 'utf8');
   return stats;
@@ -469,10 +616,20 @@ function addEntry(args) {
   entries.push(entry);
   writeEntries(entries);
   const stats = renderDashboard(entries);
+  const bossStatus = getBossProgress(entries);
 
   console.log(`✅ Logged #${entry.id} ${entry.title} (${formatDifficulty(entry.difficulty)})`);
   console.log(`📁 Solution file: ${entry.solutionPath}`);
   console.log(`🔥 Current streak: ${stats.currentStreak} day(s)`);
+  if (bossStatus) {
+    console.log(`👹 Weekly Boss: ${bossStatus.boss.name}`);
+    console.log(`🏆 Tier: ${bossStatus.achievedTier ? bossStatus.achievedTier.name : 'Unranked'}`);
+    if (bossStatus.nextTier) {
+      console.log(
+        `➡️ Next ${bossStatus.nextTier.name}: solves +${bossStatus.nextTier.remaining.solves}, medium+ +${bossStatus.nextTier.remaining.mediumPlus}, hard +${bossStatus.nextTier.remaining.hard}, themeHits +${bossStatus.nextTier.remaining.tagHits}`
+      );
+    }
+  }
 }
 
 function showToday(entries) {
@@ -509,6 +666,7 @@ function showMission(entries) {
   const profile = readProfile();
   const mission = getDailyMission(stats, profile);
   const nudge = getNudge(stats);
+  const bossStatus = getBossProgress(entries);
 
   console.log('🎮 LeetCode Daily Game Mode');
   console.log(`- ${mission.title}`);
@@ -516,7 +674,35 @@ function showMission(entries) {
   console.log(`- Consistency: ${stats.weekActiveDays}/7 days this week (${stats.consistencyScore}/100)`);
   console.log(`- Current streak: ${stats.currentStreak}`);
   console.log(`- Shield usage: ${stats.freezeMissesUsed}/${stats.freezeMissesAllowed}`);
+  if (bossStatus) {
+    console.log(`- Boss: ${bossStatus.boss.name} [${bossStatus.achievedTier ? bossStatus.achievedTier.name : 'Unranked'}]`);
+  }
   console.log(`- ${nudge}`);
+}
+
+function showBoss(entries) {
+  const bossStatus = getBossProgress(entries);
+  if (!bossStatus) {
+    console.log('No boss configured. Add progress/bosses.json to enable boss fights.');
+    return;
+  }
+
+  console.log('👹 Weekly Boss Fight');
+  console.log(`- Boss: ${bossStatus.boss.name}`);
+  console.log(`- Theme: ${bossStatus.boss.theme}`);
+  console.log(`- Week: ${bossStatus.weekRange}`);
+  console.log(
+    `- Progress: solves=${bossStatus.progress.solves}, medium+=${bossStatus.progress.mediumPlus}, hard=${bossStatus.progress.hard}, themeHits=${bossStatus.progress.tagHits}`
+  );
+  console.log(`- Current Tier: ${bossStatus.achievedTier ? bossStatus.achievedTier.name : 'Unranked'}`);
+  if (bossStatus.nextTier) {
+    console.log(`- Next Tier: ${bossStatus.nextTier.name}`);
+    console.log(
+      `  remaining => solves ${bossStatus.nextTier.remaining.solves}, medium+ ${bossStatus.nextTier.remaining.mediumPlus}, hard ${bossStatus.nextTier.remaining.hard}, themeHits ${bossStatus.nextTier.remaining.tagHits}`
+    );
+  } else {
+    console.log('- Max tier reached this week: Diamond');
+  }
 }
 
 function main() {
@@ -547,11 +733,17 @@ function main() {
       return;
     }
 
+    if (command === 'boss') {
+      showBoss(entries);
+      return;
+    }
+
     console.log('Usage:');
     console.log('  npm run lc:add -- --id 1 --title "Two Sum" --difficulty easy --lang js --tags array,hash --time 15');
     console.log('  npm run lc:today');
     console.log('  npm run lc:dashboard');
     console.log('  npm run lc:mission');
+    console.log('  npm run lc:boss');
   } catch (error) {
     console.error(`❌ ${error.message}`);
     process.exit(1);

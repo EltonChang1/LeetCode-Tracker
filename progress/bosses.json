@@ -1,0 +1,98 @@
+[
+  {
+    "id": "array-overlord",
+    "name": "Array Overlord",
+    "theme": "arrays, pointers, and windows",
+    "requiredTags": ["array", "two-pointers", "sliding-window"],
+    "tiers": [
+      {
+        "name": "Bronze",
+        "requirements": { "solves": 3 }
+      },
+      {
+        "name": "Silver",
+        "requirements": { "solves": 5, "mediumPlus": 2 }
+      },
+      {
+        "name": "Gold",
+        "requirements": { "solves": 7, "mediumPlus": 3 }
+      },
+      {
+        "name": "Diamond",
+        "requirements": { "solves": 10, "hard": 1 }
+      }
+    ]
+  },
+  {
+    "id": "graph-necromancer",
+    "name": "Graph Necromancer",
+    "theme": "graphs and traversals",
+    "requiredTags": ["graph", "bfs", "dfs"],
+    "tiers": [
+      {
+        "name": "Bronze",
+        "requirements": { "solves": 2, "tagHits": 1 }
+      },
+      {
+        "name": "Silver",
+        "requirements": { "solves": 4, "tagHits": 2 }
+      },
+      {
+        "name": "Gold",
+        "requirements": { "solves": 6, "mediumPlus": 3, "tagHits": 3 }
+      },
+      {
+        "name": "Diamond",
+        "requirements": { "solves": 8, "hard": 1, "tagHits": 4 }
+      }
+    ]
+  },
+  {
+    "id": "dp-time-wizard",
+    "name": "DP Time Wizard",
+    "theme": "dynamic programming and optimization",
+    "requiredTags": ["dynamic-programming", "dp", "memoization"],
+    "tiers": [
+      {
+        "name": "Bronze",
+        "requirements": { "solves": 2, "tagHits": 1 }
+      },
+      {
+        "name": "Silver",
+        "requirements": { "solves": 4, "mediumPlus": 2 }
+      },
+      {
+        "name": "Gold",
+        "requirements": { "solves": 6, "mediumPlus": 4, "tagHits": 2 }
+      },
+      {
+        "name": "Diamond",
+        "requirements": { "solves": 8, "hard": 2 }
+      }
+    ]
+  },
+  {
+    "id": "tree-sentinel",
+    "name": "Tree Sentinel",
+    "theme": "trees, recursion, and balanced thinking",
+    "requiredTags": ["tree", "binary-tree", "recursion"],
+    "tiers": [
+      {
+        "name": "Bronze",
+        "requirements": { "solves": 3 }
+      },
+      {
+        "name": "Silver",
+        "requirements": { "solves": 5, "tagHits": 2 }
+      },
+      {
+        "name": "Gold",
+        "requirements": { "solves": 7, "mediumPlus": 3 }
+      },
+      {
+        "name": "Diamond",
+        "requirements": { "solves": 9, "hard": 1, "tagHits": 3 }
+      }
+    ]
+  }
+]

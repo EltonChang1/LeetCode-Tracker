@@ -14,6 +14,13 @@
 - Solve 1 easy problem in ≤ 20 min. Start with a 2-minute timer, not motivation.
 - Nudge: Keep the promise tiny: one easy problem, then stop if needed.
 
+## Weekly Boss Fight
+- Boss: **Graph Necromancer** (graphs and traversals)
+- Week: **2026-03-16 to 2026-03-22**
+- Progress: solves=0, medium+=0, hard=0, themeHits=0
+- Reward Tier: **Unranked**
+- Next Tier: **Bronze** (remaining: solves 2, medium+ 0, hard 0, themeHits 1)
+
 ## Consistency Score
 - Last 7 active days: **0/7**
 - Consistency score: **0/100**

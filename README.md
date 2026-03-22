@@ -8,6 +8,8 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - 🛡️ Streak shield: 1 miss allowed per 14 days
 - ⭐ XP + level system based on difficulty
 - 🏅 Achievement badges to keep momentum
+- 👹 Weekly boss fights with rotating themes
+- 🏆 Reward tiers: Bronze → Silver → Gold → Diamond
 - 🎯 Daily mission with low-friction start prompt
 - 📈 Weekly consistency score (0-100)
 - 📊 Auto-generated dashboard (`DASHBOARD.md`)
@@ -24,6 +26,7 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 4. Check progress:
    - `npm run lc:today`
    - `npm run lc:mission`
+   - `npm run lc:boss`
    - `npm run lc:dashboard`
    - `npm run lc:web` then open `http://localhost:4321`
 5. Daily update to GitHub:
@@ -47,9 +50,15 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 ## Game Loop
 1. Open game dashboard: `npm run lc:web`
 2. Complete daily mission shown in dashboard.
-3. Log solve with `npm run lc:add -- ...`
-4. Watch streak shield, XP, and achievements update.
-5. End session with `npm run lc:push`.
+3. Beat weekly boss milestones in `npm run lc:boss`.
+4. Log solve with `npm run lc:add -- ...`
+5. Watch streak shield, XP, achievements, and boss tier update.
+6. End session with `npm run lc:push`.
+
+## Boss Configuration
+- Boss catalog is stored in `progress/bosses.json`.
+- One boss is selected each week automatically.
+- Tiers are unlocked by solving counts and theme-based tag hits.
 
 ## Add Entry Command
 ```bash

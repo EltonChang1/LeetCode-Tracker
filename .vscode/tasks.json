@@ -20,6 +20,12 @@
       "problemMatcher": []
     },
     {
+      "label": "LeetCode: Boss Fight",
+      "type": "shell",
+      "command": "npm run lc:boss",
+      "problemMatcher": []
+    },
+    {
       "label": "LeetCode: Game Dashboard",
       "type": "shell",
       "command": "npm run lc:web",

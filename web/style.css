@@ -115,6 +115,16 @@ h3 { margin: 0 0 6px; color: var(--muted); font-size: 14px; font-weight: 600; }
   font-size: 13px;
 }
 
+.chip.tier-on {
+  background: rgba(45, 228, 141, 0.2);
+  border-color: rgba(45, 228, 141, 0.7);
+}
+
+.chip.tier-next {
+  background: rgba(25, 227, 255, 0.18);
+  border-color: rgba(25, 227, 255, 0.8);
+}
+
 .heatbar {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
