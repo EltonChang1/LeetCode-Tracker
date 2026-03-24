@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LeetCode Quest Arena - DSA Training Ground</title>
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body>
+    <div class="bg-glow"></div>
+    <main class="container dsa-shell">
+      <header class="hero card dsa-hero">
+        <div>
+          <p class="eyebrow">DSA TRAINING GROUND</p>
+          <h1>Interactive Practice Sheet</h1>
+          <p id="dsaHeroLine" class="sub">Loading your practice board...</p>
+        </div>
+        <div class="hero-actions">
+          <a class="btn" href="index.html">Back to Dashboard</a>
+          <button id="randomPickBtn" class="btn ghost" type="button">Random Pick</button>
+        </div>
+      </header>
+
+      <section class="stats-grid dsa-stats">
+        <article class="card stat">
+          <h3>Progress</h3>
+          <p id="progressStat">0/0</p>
+        </article>
+        <article class="card stat">
+          <h3>In Motion</h3>
+          <p id="inProgressStat">0</p>
+        </article>
+        <article class="card stat">
+          <h3>Review Queue</h3>
+          <p id="reviewStat">0</p>
+        </article>
+        <article class="card stat">
+          <h3>Mastery</h3>
+          <p id="masteredStat">0</p>
+        </article>
+      </section>
+
+      <section class="layout-two dsa-top-grid">
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <h2>Today&apos;s Route</h2>
+              <p class="muted">A small, focused run based on unfinished and review-worthy questions.</p>
+            </div>
+            <button id="rerollSetBtn" class="btn small ghost" type="button">Reroll Set</button>
+          </div>
+          <div id="dailySet" class="daily-set"></div>
+        </article>
+
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <h2>Topic Momentum</h2>
+              <p class="muted">See where you&apos;re building skill and where you should return next.</p>
+            </div>
+          </div>
+          <div id="topicProgress" class="topic-progress"></div>
+        </article>
+      </section>
+
+      <section class="card dsa-controls">
+        <div class="section-heading">
+          <div>
+            <h2>Practice Filters</h2>
+            <p class="muted">Search, narrow, and jump back into the right kind of challenge.</p>
+          </div>
+          <button id="clearFiltersBtn" class="btn small ghost" type="button">Clear Filters</button>
+        </div>
+        <div class="dsa-filters">
+          <label class="filter-field">
+            <span>Search</span>
+            <input id="searchInput" class="text-input" type="search" placeholder="Search title, tag, or topic" />
+          </label>
+          <label class="filter-field">
+            <span>Status</span>
+            <select id="statusFilter" class="text-input">
+              <option value="all">All statuses</option>
+              <option value="not-started">Not Started</option>
+              <option value="in-progress">In Progress</option>
+              <option value="solved">Solved</option>
+              <option value="review">Revisit</option>
+              <option value="mastered">Mastered</option>
+            </select>
+          </label>
+          <label class="filter-field">
+            <span>Difficulty</span>
+            <select id="difficultyFilter" class="text-input">
+              <option value="all">All difficulties</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </label>
+          <label class="filter-field">
+            <span>Topic</span>
+            <select id="topicFilter" class="text-input">
+              <option value="all">All topics</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-heading dsa-results-heading">
+          <div>
+            <h2>Question Board</h2>
+            <p id="resultsLine" class="muted">Loading questions...</p>
+          </div>
+        </div>
+        <div id="dsaQuestions" class="dsa-board"></div>
+      </section>
+    </main>
+
+    <script src="/web/dsa.js"></script>
+  </body>
+</html>
