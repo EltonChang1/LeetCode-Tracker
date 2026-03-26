@@ -16,10 +16,44 @@
           <p id="dsaHeroLine" class="sub">Loading your practice board...</p>
         </div>
         <div class="hero-actions">
+          <button id="startPracticeBtn" class="btn" type="button">Start Today&apos;s Practice</button>
           <a class="btn" href="index.html">Back to Dashboard</a>
           <button id="randomPickBtn" class="btn ghost" type="button">Random Pick</button>
         </div>
       </header>
+
+      <section class="layout-two dsa-session-grid">
+        <article class="card session-card">
+          <div class="section-heading">
+            <div>
+              <h2>Guided Practice Loop</h2>
+              <p class="muted">One clear route: read, think, code, reflect, and queue the next best question.</p>
+            </div>
+            <span id="sessionBadge" class="pill session-badge">Ready</span>
+          </div>
+          <div class="session-current">
+            <p id="sessionHeadline" class="session-headline">Choose a focused route and start small.</p>
+            <p id="sessionQuestion" class="muted">We&apos;ll recommend the strongest next problem based on review urgency, weak topics, and momentum.</p>
+          </div>
+          <ol id="sessionSteps" class="session-steps"></ol>
+          <div class="actions session-actions">
+            <button id="sessionPrimaryBtn" class="btn" type="button">Start Today&apos;s Practice</button>
+            <button id="sessionAdvanceBtn" class="btn ghost" type="button">Next Step</button>
+            <button id="sessionCompleteBtn" class="btn ghost" type="button">Finish Question</button>
+          </div>
+          <p id="sessionSupportLine" class="muted">Your session will auto-build from unfinished work and overdue review.</p>
+        </article>
+
+        <article class="card focus-card">
+          <div class="section-heading">
+            <div>
+              <h2>Practice Coach</h2>
+              <p class="muted">Instructional guidance for what to learn next, not just what you finished.</p>
+            </div>
+          </div>
+          <div id="coachInsights" class="coach-insights"></div>
+        </article>
+      </section>
 
       <section class="stats-grid dsa-stats">
         <article class="card stat">
@@ -45,7 +79,7 @@
           <div class="section-heading">
             <div>
               <h2>Today&apos;s Route</h2>
-              <p class="muted">A small, focused run based on unfinished and review-worthy questions.</p>
+              <p class="muted">A focused run built from overdue reviews, weak topics, and the right next challenge.</p>
             </div>
             <button id="rerollSetBtn" class="btn small ghost" type="button">Reroll Set</button>
           </div>

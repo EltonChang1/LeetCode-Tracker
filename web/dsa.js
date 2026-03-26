@@ -1,5 +1,12 @@
 const DSA_STORAGE_KEY = 'lcq-dsa-state-v2';
 const DAILY_SET_SIZE = 3;
+const SESSION_STEPS = [
+  { id: 'read', label: 'Read prompt', helper: 'Restate the goal and scan constraints before touching code.' },
+  { id: 'think', label: 'Think in patterns', helper: 'Pick the likely pattern and name the invariant you need.' },
+  { id: 'code', label: 'Code it', helper: 'Implement the cleanest version you can explain in one minute.' },
+  { id: 'reflect', label: 'Reflect', helper: 'Capture the pattern, the trap, and your confidence before moving on.' },
+  { id: 'queue', label: 'Queue next', helper: 'Mark the outcome and let the board line up the next question.' },
+];
 
 const dsaQuestions = [
   { title: 'Two Sum', id: 'two-sum', difficulty: 'easy', topic: 'Arrays', tags: ['array', 'hash-table'], description: 'Find a pair quickly by trading brute force for lookup speed.' },
@@ -129,7 +136,10 @@ function getQuestionState(id) {
   return {
     status: 'not-started',
     notes: '',
+    patternNote: '',
+    mistakeNote: '',
     lastTouched: '',
+    nextReviewAt: '',
     attempts: 0,
     confidence: 0,
     expanded: false,
@@ -137,13 +147,43 @@ function getQuestionState(id) {
   };
 }
 
-function updateQuestionState(id, patch) {
+function getMeta() {
+  const session = state.__meta?.session || {};
+  return {
+    session: {
+      active: false,
+      queue: [],
+      currentIndex: 0,
+      stepIndex: 0,
+      startedAt: '',
+      ...session,
+      queue: Array.isArray(session.queue) ? session.queue : [],
+    },
+  };
+}
+
+function saveMeta(metaPatch) {
   state = {
     ...state,
-    [id]: {
-      ...getQuestionState(id),
-      ...patch,
+    __meta: {
+      ...getMeta(),
+      ...metaPatch,
     },
+  };
+  saveState();
+}
+
+function updateQuestionState(id, patch) {
+  const merged = {
+    ...getQuestionState(id),
+    ...patch,
+  };
+  if (Object.prototype.hasOwnProperty.call(patch, 'status') || Object.prototype.hasOwnProperty.call(patch, 'confidence')) {
+    merged.nextReviewAt = calculateNextReviewDate(merged);
+  }
+  state = {
+    ...state,
+    [id]: merged,
   };
   saveState();
   render();
@@ -165,6 +205,7 @@ function questionWithState(question) {
     state: current,
     hints: pickHints(question),
     url: `https://leetcode.com/problems/${question.id}/`,
+    review: getReviewProfile(current),
   };
 }
 
@@ -194,20 +235,23 @@ function filterQuestions(questions, filters) {
 
 function scoreQuestion(question) {
   const statusBoost = {
-    review: 110,
-    'in-progress': 90,
-    'not-started': 70,
-    solved: 30,
+    review: 130,
+    'in-progress': 95,
+    'not-started': 60,
+    solved: 25,
     mastered: 10,
   };
   const difficultyBoost = {
-    easy: 8,
-    medium: 18,
-    hard: 28,
+    easy: 6,
+    medium: 16,
+    hard: 22,
   };
   const staleBonus = question.state.lastTouched && question.state.lastTouched !== todayKey() ? 12 : 0;
+  const dueBonus = question.review.isDue ? 55 : question.review.isSoon ? 25 : 0;
+  const weakTopicBonus = getTopicHealth(question.topic, getAllQuestions()).status === 'weak' ? 20 : 0;
+  const confidencePenalty = Math.max(0, 4 - Number(question.state.confidence || 0)) * 6;
   const rerollBonus = (hashString(`${question.id}:${rerollSeed}`) % 17);
-  return (statusBoost[question.state.status] || 0) + (difficultyBoost[question.difficulty] || 0) + staleBonus + rerollBonus;
+  return (statusBoost[question.state.status] || 0) + (difficultyBoost[question.difficulty] || 0) + staleBonus + dueBonus + weakTopicBonus + confidencePenalty + rerollBonus;
 }
 
 function buildDailySet(questions) {
@@ -235,11 +279,210 @@ function getTopicStats(questions) {
     .sort((a, b) => b.percent - a.percent || a.topic.localeCompare(b.topic));
 }
 
+function daysBetween(from, to) {
+  if (!from || !to) return 0;
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  return Math.round((end - start) / 86400000);
+}
+
+function addDaysToKey(dateKeyValue, days) {
+  if (!dateKeyValue) return '';
+  const date = new Date(`${dateKeyValue}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function calculateNextReviewDate(questionState) {
+  const baseDate = questionState.lastTouched || todayKey();
+  if (questionState.status === 'mastered') {
+    const spacing = { 0: 7, 1: 7, 2: 6, 3: 5, 4: 8, 5: 12 }[Number(questionState.confidence || 0)] || 7;
+    return addDaysToKey(baseDate, spacing);
+  }
+  if (questionState.status === 'solved') {
+    const spacing = { 0: 2, 1: 2, 2: 3, 3: 5, 4: 7, 5: 10 }[Number(questionState.confidence || 0)] || 3;
+    return addDaysToKey(baseDate, spacing);
+  }
+  if (questionState.status === 'review') {
+    return addDaysToKey(baseDate, 1);
+  }
+  if (questionState.status === 'in-progress') {
+    return addDaysToKey(baseDate, 0);
+  }
+  return '';
+}
+
+function getReviewProfile(questionState) {
+  const nextReviewAt = questionState.nextReviewAt || calculateNextReviewDate(questionState);
+  if (!nextReviewAt) {
+    return {
+      nextReviewAt: '',
+      daysUntilReview: null,
+      isDue: false,
+      isSoon: false,
+      label: 'Fresh',
+    };
+  }
+  const daysUntilReview = daysBetween(todayKey(), nextReviewAt);
+  return {
+    nextReviewAt,
+    daysUntilReview,
+    isDue: daysUntilReview <= 0,
+    isSoon: daysUntilReview > 0 && daysUntilReview <= 2,
+    label: daysUntilReview <= 0 ? 'Review now' : daysUntilReview <= 2 ? `Review in ${daysUntilReview}d` : `Review on ${nextReviewAt}`,
+  };
+}
+
+function getTopicHealth(topic, questions) {
+  const topicQuestions = questions.filter((question) => question.topic === topic);
+  const solved = topicQuestions.filter((question) => question.state.status === 'solved' || question.state.status === 'mastered').length;
+  const review = topicQuestions.filter((question) => question.review.isDue || question.state.status === 'review').length;
+  const percent = topicQuestions.length ? Math.round((solved / topicQuestions.length) * 100) : 0;
+  const status = review > 0 || percent < 35 ? 'weak' : percent >= 70 ? 'strong' : 'building';
+  return { solved, review, percent, status, total: topicQuestions.length };
+}
+
+function getPracticeInsights(questions) {
+  const dueQuestions = questions.filter((question) => question.review.isDue);
+  const topicHealth = [...new Set(questions.map((question) => question.topic))]
+    .map((topic) => ({ topic, ...getTopicHealth(topic, questions) }))
+    .sort((a, b) => a.percent - b.percent || b.review - a.review || a.topic.localeCompare(b.topic));
+  const weakTopic = topicHealth[0];
+  const inProgress = questions.filter((question) => question.state.status === 'in-progress')
+    .sort((a, b) => (a.state.lastTouched || '').localeCompare(b.state.lastTouched || ''))
+    .at(-1);
+  const lowConfidence = questions
+    .filter((question) => question.state.status === 'solved' || question.state.status === 'mastered')
+    .filter((question) => Number(question.state.confidence || 0) > 0 && Number(question.state.confidence || 0) <= 2)
+    .sort((a, b) => Number(a.state.confidence || 0) - Number(b.state.confidence || 0))[0];
+
+  return {
+    dueCount: dueQuestions.length,
+    weakTopic,
+    inProgress,
+    lowConfidence,
+  };
+}
+
+function buildRecommendedQueue(questions) {
+  return [...questions]
+    .sort((a, b) => {
+      const delta = scoreQuestion(b) - scoreQuestion(a);
+      if (delta !== 0) return delta;
+      return a.title.localeCompare(b.title);
+    })
+    .slice(0, Math.max(DAILY_SET_SIZE, 4))
+    .map((question) => question.id);
+}
+
+function startPracticeSession() {
+  const questions = getAllQuestions();
+  const queue = buildRecommendedQueue(questions);
+  if (!queue.length) return;
+  const firstId = queue[0];
+  saveMeta({
+    session: {
+      active: true,
+      queue,
+      currentIndex: 0,
+      stepIndex: 0,
+      startedAt: new Date().toISOString(),
+    },
+  });
+  updateQuestionState(firstId, {
+    expanded: true,
+    status: getQuestionState(firstId).status === 'not-started' ? 'in-progress' : getQuestionState(firstId).status,
+    lastTouched: todayKey(),
+  });
+  requestAnimationFrame(() => {
+    document.getElementById(`question-${firstId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
+function getSessionQuestion(questions, session) {
+  const id = session.queue[session.currentIndex];
+  return questions.find((question) => question.id === id) || null;
+}
+
+function advanceSessionStep() {
+  const meta = getMeta();
+  const session = meta.session;
+  if (!session.active) {
+    startPracticeSession();
+    return;
+  }
+  const nextStepIndex = Math.min(SESSION_STEPS.length - 1, session.stepIndex + 1);
+  saveMeta({
+    session: {
+      ...session,
+      stepIndex: nextStepIndex,
+    },
+  });
+  render();
+}
+
+function completeSessionQuestion() {
+  const meta = getMeta();
+  const session = meta.session;
+  if (!session.active) {
+    startPracticeSession();
+    return;
+  }
+  const questions = getAllQuestions();
+  const currentQuestion = getSessionQuestion(questions, session);
+  if (!currentQuestion) return;
+  const currentState = getQuestionState(currentQuestion.id);
+  const nextStatus = currentState.status === 'mastered'
+    ? 'mastered'
+    : currentState.confidence >= 4
+      ? 'solved'
+      : 'review';
+  updateQuestionState(currentQuestion.id, {
+    status: nextStatus,
+    expanded: true,
+    lastTouched: todayKey(),
+  });
+
+  const nextIndex = session.currentIndex + 1;
+  if (nextIndex >= session.queue.length) {
+    saveMeta({
+      session: {
+        ...session,
+        active: false,
+        currentIndex: session.currentIndex,
+        stepIndex: SESSION_STEPS.length - 1,
+      },
+    });
+    render();
+    return;
+  }
+
+  const nextId = session.queue[nextIndex];
+  saveMeta({
+    session: {
+      ...session,
+      currentIndex: nextIndex,
+      stepIndex: 0,
+    },
+  });
+  updateQuestionState(nextId, {
+    expanded: true,
+    status: getQuestionState(nextId).status === 'not-started' ? 'in-progress' : getQuestionState(nextId).status,
+    lastTouched: todayKey(),
+  });
+  requestAnimationFrame(() => {
+    document.getElementById(`question-${nextId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
 function updateHeroLine(questions) {
   const reviewCount = questions.filter((question) => question.state.status === 'review').length;
   const inProgressCount = questions.filter((question) => question.state.status === 'in-progress').length;
-  const line = reviewCount
-    ? `${reviewCount} questions are waiting in your review queue.`
+  const dueCount = questions.filter((question) => question.review.isDue).length;
+  const line = dueCount
+    ? `${dueCount} reviews are due now. Start there to lock in retention.`
+    : reviewCount
+      ? `${reviewCount} questions are waiting in your review queue.`
     : inProgressCount
       ? `${inProgressCount} problems are already in motion.`
       : 'Pick a route, start small, and keep the streak moving.';
@@ -259,6 +502,103 @@ function renderStats(questions) {
   document.getElementById('masteredStat').textContent = String(mastered);
 }
 
+function renderCoachInsights(questions) {
+  const container = document.getElementById('coachInsights');
+  const insights = getPracticeInsights(questions);
+  const cards = [];
+
+  if (insights.dueCount) {
+    cards.push({
+      title: 'Review is due',
+      body: `${insights.dueCount} question${insights.dueCount === 1 ? '' : 's'} need a revisit now. Clearing those first will improve retention faster than chasing brand new problems.`,
+    });
+  }
+  if (insights.weakTopic) {
+    cards.push({
+      title: `Weakest topic: ${insights.weakTopic.topic}`,
+      body: insights.weakTopic.review
+        ? `${insights.weakTopic.review} review item${insights.weakTopic.review === 1 ? '' : 's'} are piling up here. This is your best place to rebuild confidence.`
+        : `${insights.weakTopic.percent}% of this topic is cleared. Use today's route to strengthen this area next.`,
+    });
+  }
+  if (insights.inProgress) {
+    cards.push({
+      title: 'Keep momentum',
+      body: `${insights.inProgress.title} is already in progress. Finishing warm work is often easier than context-switching to a new problem.`,
+    });
+  }
+  if (insights.lowConfidence) {
+    cards.push({
+      title: 'Confidence gap',
+      body: `${insights.lowConfidence.title} was solved, but confidence is still low. Queue it for a cleaner second pass.`,
+    });
+  }
+
+  container.innerHTML = cards.length
+    ? cards.map((card) => `
+      <article class="coach-card">
+        <h3>${card.title}</h3>
+        <p class="muted">${card.body}</p>
+      </article>
+    `).join('')
+    : '<article class="coach-card"><h3>Route is balanced</h3><p class="muted">You have a healthy mix of progress and review. Start today&apos;s practice and keep the loop moving.</p></article>';
+}
+
+function renderSessionPanel(questions) {
+  const meta = getMeta();
+  const session = meta.session;
+  const currentQuestion = getSessionQuestion(questions, session);
+  const badge = document.getElementById('sessionBadge');
+  const headline = document.getElementById('sessionHeadline');
+  const questionLine = document.getElementById('sessionQuestion');
+  const steps = document.getElementById('sessionSteps');
+  const supportLine = document.getElementById('sessionSupportLine');
+  const primaryBtn = document.getElementById('sessionPrimaryBtn');
+  const advanceBtn = document.getElementById('sessionAdvanceBtn');
+  const completeBtn = document.getElementById('sessionCompleteBtn');
+
+  if (!session.active || !currentQuestion) {
+    const queue = buildRecommendedQueue(questions);
+    const nextQuestion = questions.find((question) => question.id === queue[0]);
+    badge.textContent = 'Ready';
+    badge.className = 'pill session-badge';
+    headline.textContent = nextQuestion ? `Start with ${nextQuestion.title}.` : 'Start a focused practice run.';
+    questionLine.textContent = nextQuestion
+      ? `${nextQuestion.topic} · ${titleCase(nextQuestion.difficulty)} · ${nextQuestion.review.label}`
+      : 'We will build a route from review urgency and unfinished work.';
+    steps.innerHTML = SESSION_STEPS.map((step, index) => `
+      <li class="session-step ${index === 0 ? 'active' : ''}">
+        <strong>${step.label}</strong>
+        <span>${step.helper}</span>
+      </li>
+    `).join('');
+    supportLine.textContent = nextQuestion
+      ? `Recommended first question: ${nextQuestion.title}.`
+      : 'Your session will auto-build from unfinished work and overdue review.';
+    primaryBtn.textContent = 'Start Today\'s Practice';
+    advanceBtn.disabled = true;
+    completeBtn.disabled = true;
+    return;
+  }
+
+  badge.textContent = `Question ${session.currentIndex + 1}/${session.queue.length}`;
+  badge.className = 'pill session-badge live';
+  headline.textContent = currentQuestion.title;
+  questionLine.textContent = `${currentQuestion.topic} · ${titleCase(currentQuestion.difficulty)} · ${currentQuestion.review.label}`;
+  steps.innerHTML = SESSION_STEPS.map((step, index) => `
+    <li class="session-step ${index === session.stepIndex ? 'active' : ''} ${index < session.stepIndex ? 'done' : ''}">
+      <strong>${step.label}</strong>
+      <span>${step.helper}</span>
+    </li>
+  `).join('');
+  supportLine.textContent = session.stepIndex === SESSION_STEPS.length - 1
+    ? 'Mark the outcome, capture the lesson, and queue the next best problem.'
+    : SESSION_STEPS[session.stepIndex].helper;
+  primaryBtn.textContent = 'Restart Session';
+  advanceBtn.disabled = false;
+  completeBtn.disabled = false;
+}
+
 function renderDailySet(questions) {
   const container = document.getElementById('dailySet');
   const dailySet = buildDailySet(questions);
@@ -267,13 +607,13 @@ function renderDailySet(questions) {
     ? dailySet.map((question) => `
         <article class="daily-card">
           <div class="daily-card-copy">
-            <p class="daily-kicker">${question.topic} · ${titleCase(question.difficulty)}</p>
+            <p class="daily-kicker">${question.topic} · ${titleCase(question.difficulty)} · ${question.review.label}</p>
             <h3>${question.title}</h3>
             <p class="muted">${question.description}</p>
           </div>
           <div class="actions">
             <button class="btn small ghost" type="button" data-jump="${question.id}">Open Card</button>
-            <button class="btn small" type="button" data-status="${question.id}:in-progress">Start</button>
+            <button class="btn small" type="button" data-start-question="${question.id}">Start</button>
           </div>
         </article>
       `).join('')
@@ -293,6 +633,7 @@ function renderTopicProgress(questions) {
         <span style="width:${item.percent}%"></span>
       </div>
       <p class="muted">${item.percent}% clear${item.review ? ` · ${item.review} queued for revisit` : ''}${item.mastered ? ` · ${item.mastered} mastered` : ''}</p>
+      <p class="muted">${item.review ? `Review pressure is building here. Revisit this topic next.` : item.percent >= 70 ? 'You are building reliable coverage here.' : 'This topic still needs a few focused reps.'}</p>
     </article>
   `).join('');
 }
@@ -322,6 +663,7 @@ function renderQuestionCard(question) {
           </div>
           <h2>${question.title}</h2>
           <p class="muted">${question.description}</p>
+          <p class="muted question-review-line">${question.review.label}${question.state.lastTouched ? ` · Last touched ${question.state.lastTouched}` : ''}</p>
         </div>
         <div class="actions">
           <button class="btn small ghost" type="button" data-toggle="${question.id}">
@@ -349,7 +691,6 @@ function renderQuestionCard(question) {
             <ol class="hint-list">
               ${question.hints.map((hint) => `<li>${hint}</li>`).join('')}
             </ol>
-            <p class="muted">Last touched: ${question.state.lastTouched || 'Not yet'}</p>
             <p class="muted">Attempts: ${question.state.attempts}</p>
             <p class="muted">${confidenceLabel}</p>
             <div class="actions">
@@ -371,6 +712,14 @@ function renderQuestionCard(question) {
                 <option value="5"${question.state.confidence === 5 ? ' selected' : ''}>5 - can teach it</option>
               </select>
             </label>
+            <label class="filter-field">
+              <span>Pattern That Solved It</span>
+              <input class="text-input" data-pattern-note="${question.id}" type="text" placeholder="Sliding window, monotonic stack, BFS level-order..." value="${escapeAttribute(question.state.patternNote)}" />
+            </label>
+            <label class="filter-field">
+              <span>Mistake To Avoid Next Time</span>
+              <input class="text-input" data-mistake-note="${question.id}" type="text" placeholder="Forgetting base case, shrinking window too early..." value="${escapeAttribute(question.state.mistakeNote)}" />
+            </label>
             <textarea class="dsa-notes" data-notes="${question.id}" placeholder="Capture the trick, bug, edge case, or what you want to revisit...">${escapeHtml(question.state.notes)}</textarea>
           </section>
         </div>
@@ -386,6 +735,10 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;');
 }
 
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll('"', '&quot;');
+}
+
 function populateTopicFilter() {
   const select = document.getElementById('topicFilter');
   const current = select.value || 'all';
@@ -395,6 +748,10 @@ function populateTopicFilter() {
 }
 
 function attachEventHandlers() {
+  document.getElementById('startPracticeBtn').addEventListener('click', startPracticeSession);
+  document.getElementById('sessionPrimaryBtn').addEventListener('click', startPracticeSession);
+  document.getElementById('sessionAdvanceBtn').addEventListener('click', advanceSessionStep);
+  document.getElementById('sessionCompleteBtn').addEventListener('click', completeSessionQuestion);
   document.getElementById('searchInput').addEventListener('input', render);
   document.getElementById('statusFilter').addEventListener('change', render);
   document.getElementById('difficultyFilter').addEventListener('change', render);
@@ -429,7 +786,42 @@ function attachEventHandlers() {
   document.getElementById('dsaQuestions').addEventListener('input', handleDelegatedInput);
 }
 
+function maybeAutoStartFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const difficulty = params.get('difficulty');
+  if (difficulty && document.getElementById('difficultyFilter')) {
+    document.getElementById('difficultyFilter').value = difficulty;
+  }
+  if (params.get('start') !== 'today') return;
+  startPracticeSession();
+}
+
 function handleDelegatedClick(event) {
+  const startQuestionTarget = event.target.closest('[data-start-question]');
+  if (startQuestionTarget) {
+    const id = startQuestionTarget.getAttribute('data-start-question');
+    const queue = buildRecommendedQueue(getAllQuestions());
+    const orderedQueue = [id, ...queue.filter((questionId) => questionId !== id)];
+    saveMeta({
+      session: {
+        active: true,
+        queue: orderedQueue,
+        currentIndex: 0,
+        stepIndex: 0,
+        startedAt: new Date().toISOString(),
+      },
+    });
+    updateQuestionState(id, {
+      status: getQuestionState(id).status === 'not-started' ? 'in-progress' : getQuestionState(id).status,
+      expanded: true,
+      lastTouched: todayKey(),
+    });
+    requestAnimationFrame(() => {
+      document.getElementById(`question-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return;
+  }
+
   const statusTarget = event.target.closest('[data-status]');
   if (statusTarget) {
     const [id, status] = statusTarget.getAttribute('data-status').split(':');
@@ -488,23 +880,56 @@ function handleDelegatedChange(event) {
 
 function handleDelegatedInput(event) {
   const notesTarget = event.target.closest('[data-notes]');
-  if (!notesTarget) return;
-  const id = notesTarget.getAttribute('data-notes');
-  state = {
-    ...state,
-    [id]: {
-      ...getQuestionState(id),
-      notes: notesTarget.value,
-      expanded: true,
-    },
-  };
-  saveState();
+  if (notesTarget) {
+    const id = notesTarget.getAttribute('data-notes');
+    state = {
+      ...state,
+      [id]: {
+        ...getQuestionState(id),
+        notes: notesTarget.value,
+        expanded: true,
+      },
+    };
+    saveState();
+    return;
+  }
+
+  const patternTarget = event.target.closest('[data-pattern-note]');
+  if (patternTarget) {
+    const id = patternTarget.getAttribute('data-pattern-note');
+    state = {
+      ...state,
+      [id]: {
+        ...getQuestionState(id),
+        patternNote: patternTarget.value,
+        expanded: true,
+      },
+    };
+    saveState();
+    return;
+  }
+
+  const mistakeTarget = event.target.closest('[data-mistake-note]');
+  if (mistakeTarget) {
+    const id = mistakeTarget.getAttribute('data-mistake-note');
+    state = {
+      ...state,
+      [id]: {
+        ...getQuestionState(id),
+        mistakeNote: mistakeTarget.value,
+        expanded: true,
+      },
+    };
+    saveState();
+  }
 }
 
 function render() {
   const questions = getAllQuestions();
   const filters = getFilters();
   updateHeroLine(questions);
+  renderSessionPanel(questions);
+  renderCoachInsights(questions);
   renderStats(questions);
   renderDailySet(questions);
   renderTopicProgress(questions);
@@ -515,4 +940,5 @@ document.addEventListener('DOMContentLoaded', () => {
   populateTopicFilter();
   attachEventHandlers();
   render();
+  maybeAutoStartFromQuery();
 });

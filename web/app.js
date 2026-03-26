@@ -101,6 +101,112 @@ const fallbackBosses = [
   },
 ];
 
+const INTERACTIVE_STORAGE_KEY = 'lcq-interactive-v1';
+const SYNC_MODE_STORAGE_KEY = 'lcq-write-sync-mode';
+const LEETCODE_USERNAME_STORAGE_KEY = 'lcq-leetcode-username';
+const DEFAULT_TAG_POOL = ['array', 'hash-table', 'dp', 'graph', 'tree', 'sliding-window', 'two-pointers'];
+const TITLE_POOL = {
+  easy: ['Potion Sort', 'Warmup Path', 'Quick Pair'],
+  medium: ['Combo Engine', 'Mid-Boss Route', 'Signal Optimizer'],
+  hard: ['Void Traversal', 'Legend Cutover', 'Raid Prime Solver'],
+};
+
+const deepClone = (v) => JSON.parse(JSON.stringify(v));
+
+function defaultInteractiveState() {
+  return {
+    extraEntries: [],
+    rewardsStateOverride: null,
+    chestRerolls: {},
+    activityLog: [],
+    missionStarted: false,
+  };
+}
+
+function loadInteractiveState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INTERACTIVE_STORAGE_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') {
+      return defaultInteractiveState();
+    }
+    return {
+      ...defaultInteractiveState(),
+      ...parsed,
+      extraEntries: Array.isArray(parsed.extraEntries) ? parsed.extraEntries : [],
+      chestRerolls: parsed.chestRerolls && typeof parsed.chestRerolls === 'object' ? parsed.chestRerolls : {},
+      activityLog: Array.isArray(parsed.activityLog) ? parsed.activityLog : [],
+    };
+  } catch {
+    return defaultInteractiveState();
+  }
+}
+
+function saveInteractiveState(state) {
+  localStorage.setItem(INTERACTIVE_STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadSyncMode() {
+  return localStorage.getItem(SYNC_MODE_STORAGE_KEY) === '1';
+}
+
+function saveSyncMode(enabled) {
+  localStorage.setItem(SYNC_MODE_STORAGE_KEY, enabled ? '1' : '0');
+}
+
+function loadLeetCodeUsername() {
+  return localStorage.getItem(LEETCODE_USERNAME_STORAGE_KEY) || '';
+}
+
+function saveLeetCodeUsername(username) {
+  localStorage.setItem(LEETCODE_USERNAME_STORAGE_KEY, String(username || '').trim());
+}
+
+async function apiRequest(url, method, body) {
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.error || 'API request failed');
+  }
+  return json;
+}
+
+function addActivity(state, text) {
+  const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  state.activityLog.unshift(`[${stamp}] ${text}`);
+  state.activityLog = state.activityLog.slice(0, 24);
+}
+
+function pickOne(arr, seed) {
+  if (!arr.length) return '';
+  return arr[pseudoRandomNumber(seed, 0, arr.length - 1)];
+}
+
+function makeSimEntry(difficulty, date = todayKey(), tags = []) {
+  const nonce = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const chosenTags = tags.length
+    ? tags
+    : [pickOne(DEFAULT_TAG_POOL, `${nonce}-t1`), pickOne(DEFAULT_TAG_POOL, `${nonce}-t2`)].filter(Boolean);
+  return {
+    id: `SIM-${nonce}`,
+    title: pickOne(TITLE_POOL[difficulty] || TITLE_POOL.easy, `${nonce}-${difficulty}`),
+    difficulty,
+    language: 'js',
+    solvedAt: date,
+    timeMinutes: difficulty === 'hard' ? 45 : difficulty === 'medium' ? 25 : 12,
+    tags: [...new Set(chosenTags)],
+    url: '',
+    notes: 'Interactive web simulation entry',
+    createdAt: new Date().toISOString(),
+  };
+}
+
 const toDate = (s) => new Date(`${s}T00:00:00`);
 const addDays = (d, n) => {
   const r = new Date(d);
@@ -418,12 +524,12 @@ function chestPreview(entries, currentStreak, rewardsConfig) {
   };
 }
 
-function chestStatus(entries, currentStreak, rewardsConfig, rewardsState) {
+function chestStatus(entries, currentStreak, rewardsConfig, rewardsState, previewOverride = null) {
   const claim = (rewardsState.claims && rewardsState.claims[todayKey()]) || null;
   return {
     claimed: Boolean(claim),
     claim,
-    preview: chestPreview(entries, currentStreak, rewardsConfig),
+    preview: previewOverride || chestPreview(entries, currentStreak, rewardsConfig),
     wallet: (rewardsState.wallet || fallbackRewardsState.wallet),
   };
 }
@@ -578,7 +684,7 @@ function nudge(stats) {
   return 'Tiny start wins: open one problem and code for 2 minutes.';
 }
 
-function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewardsConfig, rewardsState) {
+function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewardsConfig, rewardsState, interactive) {
   document.getElementById('todayLine').textContent = `Today: ${todayKey()} · ${stats.todayCount} solve(s)`;
   document.getElementById('currentStreak').textContent = `${stats.currentStreak}d`;
   document.getElementById('longestStreak').textContent = `${stats.longestStreak}d`;
@@ -587,6 +693,17 @@ function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewar
   document.getElementById('shieldText').textContent = `${stats.freezeMissesUsed}/${stats.freezeMissesAllowed} used`;
   document.getElementById('missionText').textContent = missionText(stats, profile);
   document.getElementById('nudgeText').textContent = nudge(stats);
+  const missionHref = `/web/dsa.html?start=today&difficulty=${encodeURIComponent(profile.preferredWarmupDifficulty || 'easy')}`;
+  const startPracticeLink = document.getElementById('startPracticeLink');
+  const missionStartLink = document.getElementById('missionStartBtn');
+  if (startPracticeLink) startPracticeLink.href = missionHref;
+  if (missionStartLink) missionStartLink.href = missionHref;
+  const practiceBridgeLine = document.getElementById('practiceBridgeLine');
+  if (practiceBridgeLine) {
+    practiceBridgeLine.textContent = stats.todayCount > 0
+      ? 'Jump back into the guided DSA board to finish review or push one more focused solve.'
+      : 'Start the mission in the DSA board and we will queue the best first problem for you.';
+  }
 
   const achievements = document.getElementById('achievements');
   achievements.innerHTML = '';
@@ -667,7 +784,7 @@ function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewar
   }
 
   const multiplier = getStreakMultiplier(stats.currentStreak, rewardsConfig);
-  const chest = chestStatus(entries, stats.currentStreak, rewardsConfig, rewardsState);
+  const chest = chestStatus(entries, stats.currentStreak, rewardsConfig, rewardsState, interactive.chestRerolls[todayKey()] || null);
   const chestLoot = chest.claimed ? chest.claim : chest.preview;
   const event = luckyWeekendEvent(rewardsConfig);
 
@@ -675,17 +792,323 @@ function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewar
   document.getElementById('boostedXpLine').textContent = `Boosted XP: ${Math.round(stats.xp * multiplier.multiplier)} (base ${stats.xp})`;
   document.getElementById('chestLine').textContent = `${chest.claimed ? 'Claimed' : 'Ready'} · ${chestLoot.rarity} · +${chestLoot.rewards.coins}c +${chestLoot.rewards.tokens}t +${chestLoot.rewards.gems}g${event.active ? ' · weekend boosted' : ''}`;
   document.getElementById('walletLine').textContent = `Wallet: ${chest.wallet.coins} coins · ${chest.wallet.tokens} tokens · ${chest.wallet.gems} gems`;
+
+  const activityLog = document.getElementById('activityLog');
+  if (activityLog) {
+    activityLog.innerHTML = '';
+    const logs = interactive.activityLog.length
+      ? interactive.activityLog
+      : ['No actions yet. Tap any gameplay button to interact.'];
+    for (const line of logs) {
+      const li = document.createElement('li');
+      li.textContent = line;
+      activityLog.appendChild(li);
+    }
+  }
 }
 
-async function bootstrap() {
+let baseData = null;
+let interactive = loadInteractiveState();
+let writeSyncEnabled = loadSyncMode();
+let serverAllowWrites = false;
+
+function flashButton(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('pulse');
+  setTimeout(() => el.classList.remove('pulse'), 500);
+}
+
+function getEffectiveRewardsState() {
+  if (!interactive.rewardsStateOverride) {
+    interactive.rewardsStateOverride = deepClone(baseData.rewardsState || fallbackRewardsState);
+  }
+  return interactive.rewardsStateOverride;
+}
+
+function getEffectiveEntries() {
+  return [...baseData.entries, ...interactive.extraEntries];
+}
+
+function updateSyncUi() {
+  const toggle = document.getElementById('syncWriteToggle');
+  const line = document.getElementById('syncModeLine');
+  const syncBtn = document.getElementById('leetcodeSyncBtn');
+  if (!toggle || !line) return;
+
+  toggle.disabled = !serverAllowWrites;
+  toggle.checked = writeSyncEnabled && serverAllowWrites;
+  if (syncBtn) syncBtn.disabled = !serverAllowWrites;
+
+  if (!serverAllowWrites) {
+    line.textContent = 'Write API disabled on server. Start web server with LCQ_ALLOW_WRITE=1 to enable sync mode.';
+    return;
+  }
+
+  line.textContent = toggle.checked
+    ? 'Sync mode ON: actions write to progress/entries.json and progress/rewards-state.json.'
+    : 'Sync mode OFF: actions stay in browser simulation only.';
+}
+
+function getBossPreferredTags() {
+  const status = bossStatus(getEffectiveEntries(), baseData.bosses);
+  return status?.boss?.requiredTags?.slice(0, 2) || [];
+}
+
+function getRaidPreferredTags() {
+  const raid = raidStatus(getEffectiveEntries(), baseData.raidBosses, baseData.rewardsConfig);
+  return raid?.boss?.weaknessTags?.slice(0, 2) || [];
+}
+
+async function addSolveAction(difficulty, tags = []) {
+  const entry = makeSimEntry(difficulty, todayKey(), tags);
+
+  if (writeSyncEnabled && serverAllowWrites) {
+    await apiRequest('/api/entries', 'POST', { entry });
+    addActivity(interactive, `Synced ${difficulty.toUpperCase()} quest to progress file: ${entry.title}`);
+    saveInteractiveState(interactive);
+    return;
+  }
+
+  interactive.extraEntries.push(entry);
+  addActivity(interactive, `Solved ${difficulty.toUpperCase()} quest: ${entry.title}`);
+  saveInteractiveState(interactive);
+}
+
+async function openChestAction() {
+  const entries = getEffectiveEntries();
+  const stats = calcStats(entries);
+  const rewardsState = getEffectiveRewardsState();
+  const today = todayKey();
+  const claim = rewardsState.claims?.[today];
+
+  if (claim) {
+    addActivity(interactive, `Chest already claimed today (${claim.rarity}).`);
+    return;
+  }
+
+  const preview = interactive.chestRerolls[today] || chestPreview(entries, stats.currentStreak, baseData.rewardsConfig);
+
+  if (writeSyncEnabled && serverAllowWrites) {
+    const response = await apiRequest('/api/rewards/claim', 'POST', {
+      date: today,
+      claim: preview,
+    });
+    interactive.rewardsStateOverride = null;
+    delete interactive.chestRerolls[today];
+    addActivity(
+      interactive,
+      `Synced chest claim: ${response.claim.rarity} (+${response.claim.rewards.coins}c, +${response.claim.rewards.tokens}t, +${response.claim.rewards.gems}g)`
+    );
+    saveInteractiveState(interactive);
+    return;
+  }
+
+  if (!rewardsState.claims) rewardsState.claims = {};
+  rewardsState.claims[today] = {
+    ...preview,
+    claimedAt: new Date().toISOString(),
+  };
+  rewardsState.wallet.coins += preview.rewards.coins;
+  rewardsState.wallet.tokens += preview.rewards.tokens;
+  rewardsState.wallet.gems += preview.rewards.gems;
+  delete interactive.chestRerolls[today];
+  addActivity(interactive, `Opened chest: ${preview.rarity} (+${preview.rewards.coins}c, +${preview.rewards.tokens}t, +${preview.rewards.gems}g)`);
+  saveInteractiveState(interactive);
+}
+
+function rerollChestAction() {
+  const rewardsState = getEffectiveRewardsState();
+  const today = todayKey();
+  if ((rewardsState.claims && rewardsState.claims[today])) {
+    addActivity(interactive, 'Cannot reroll: chest already claimed today.');
+    return;
+  }
+  if ((rewardsState.wallet?.tokens || 0) < 1) {
+    addActivity(interactive, 'Need 1 token to reroll chest preview.');
+    return;
+  }
+
+  const entries = getEffectiveEntries();
+  const stats = calcStats(entries);
+  rewardsState.wallet.tokens -= 1;
+  const reroll = chestPreview(entries, stats.currentStreak + 1, baseData.rewardsConfig);
+  interactive.chestRerolls[today] = reroll;
+  addActivity(interactive, `Rerolled chest preview -> ${reroll.rarity}.`);
+  saveInteractiveState(interactive);
+}
+
+function backfillYesterdayAction() {
+  const yesterday = key(addDays(toDate(todayKey()), -1));
+  const entries = getEffectiveEntries();
+  const already = entries.some((entry) => entry.solvedAt === yesterday);
+  if (already) {
+    addActivity(interactive, 'Yesterday is already filled. Nice consistency.');
+    return;
+  }
+  interactive.extraEntries.push(makeSimEntry('easy', yesterday, ['array']));
+  addActivity(interactive, `Backfilled yesterday (${yesterday}) with an easy quest.`);
+  saveInteractiveState(interactive);
+}
+
+async function syncLeetCodeProfileAction() {
+  if (!serverAllowWrites) {
+    throw new Error('Write API is disabled. Start with npm run lc:web:write.');
+  }
+
+  const input = document.getElementById('leetcodeUsernameInput');
+  const bootstrapToggle = document.getElementById('leetcodeBootstrapToggle');
+  const username = String(input?.value || '').trim();
+  if (!username) {
+    throw new Error('Enter your LeetCode username first.');
+  }
+
+  saveLeetCodeUsername(username);
+  const result = await apiRequest('/api/leetcode/sync', 'POST', {
+    username,
+    limit: 25,
+    bootstrapMode: Boolean(bootstrapToggle?.checked),
+  });
+
+  interactive.rewardsStateOverride = null;
+  addActivity(
+    interactive,
+    `LeetCode sync @${result.username}: +${result.importedCount} new solve(s) from ${result.fetchedAccepted} accepted recent submissions.`
+  );
+  if (result.visibilityLimited) {
+    addActivity(
+      interactive,
+      `Profile visibility note: accepted solves exist (local=${result.localAccepted}, global=${result.globalAccepted}) but recent submission history is not publicly exposed.`
+    );
+    if (!result.bootstrapImportedCount) {
+      addActivity(interactive, 'Tip: enable bootstrap mode toggle to import aggregate Easy/Medium/Hard counts.');
+    }
+  }
+  if (result.bootstrapImportedCount > 0) {
+    addActivity(
+      interactive,
+      `Bootstrap imported ${result.bootstrapImportedCount} aggregate entries from profile counts.`
+    );
+  }
+  saveInteractiveState(interactive);
+}
+
+function bindButton(id, handler) {
+  const el = document.getElementById(id);
+  if (!el || el.dataset.bound === '1') return;
+  el.dataset.bound = '1';
+  el.addEventListener('click', async () => {
+    try {
+      await handler();
+      flashButton(id);
+      await refreshBoard(writeSyncEnabled && serverAllowWrites);
+    } catch (error) {
+      addActivity(interactive, `Action failed: ${error.message}`);
+      saveInteractiveState(interactive);
+      await refreshBoard(false);
+    }
+  });
+}
+
+async function refreshBoard(reloadBase = false) {
   try {
-    const { entries, profile, bosses, league, raidBosses, rewardsConfig, rewardsState } = await loadData();
+    if (reloadBase || !baseData) {
+      baseData = await loadData();
+    }
+
+    const entries = getEffectiveEntries();
+    const rewardsState = getEffectiveRewardsState();
     const stats = calcStats(entries);
-    render(stats, profile, entries, bosses, league, raidBosses, rewardsConfig, rewardsState);
+    render(
+      stats,
+      baseData.profile,
+      entries,
+      baseData.bosses,
+      baseData.league,
+      baseData.raidBosses,
+      baseData.rewardsConfig,
+      rewardsState,
+      interactive
+    );
+
+    updateSyncUi();
+
+    const usernameInput = document.getElementById('leetcodeUsernameInput');
+    if (usernameInput && !usernameInput.value) {
+      usernameInput.value = loadLeetCodeUsername();
+    }
+
+    bindButton('missionCompleteBtn', async () => {
+      await addSolveAction(baseData.profile.preferredWarmupDifficulty || 'easy');
+      addActivity(interactive, 'Mission completed with a focused solve.');
+      saveInteractiveState(interactive);
+    });
+
+    bindButton('bossAttackBtn', () => addSolveAction('medium', getBossPreferredTags()));
+    bindButton('bossFocusBtn', () => addSolveAction('hard', getBossPreferredTags()));
+    bindButton('leagueGrindBtn', () => addSolveAction('medium', ['dp', 'array']));
+    bindButton('eloDuelBtn', () => addSolveAction('hard', ['graph', 'tree']));
+    bindButton('raidAttackBtn', () => addSolveAction('medium', getRaidPreferredTags()));
+    bindButton('raidTeamSkillBtn', () => addSolveAction('easy', getRaidPreferredTags()));
+    bindButton('streakChargeBtn', () => addSolveAction('easy', ['sliding-window']));
+    bindButton('quickEasyBtn', () => addSolveAction('easy'));
+    bindButton('quickMediumBtn', () => addSolveAction('medium'));
+    bindButton('quickHardBtn', () => addSolveAction('hard'));
+    bindButton('chestOpenBtn', openChestAction);
+    bindButton('chestRerollBtn', rerollChestAction);
+    bindButton('backfillDayBtn', backfillYesterdayAction);
+    bindButton('leetcodeSyncBtn', syncLeetCodeProfileAction);
+
+    const syncToggle = document.getElementById('syncWriteToggle');
+    if (syncToggle && syncToggle.dataset.bound !== '1') {
+      syncToggle.dataset.bound = '1';
+      syncToggle.addEventListener('change', async (event) => {
+        writeSyncEnabled = Boolean(event.target.checked) && serverAllowWrites;
+        saveSyncMode(writeSyncEnabled);
+        addActivity(interactive, `Sync mode ${writeSyncEnabled ? 'enabled' : 'disabled'}.`);
+        saveInteractiveState(interactive);
+        await refreshBoard(writeSyncEnabled && serverAllowWrites);
+      });
+    }
+
+    const resetBtn = document.getElementById('resetSimBtn');
+    if (resetBtn && resetBtn.dataset.bound !== '1') {
+      resetBtn.dataset.bound = '1';
+      resetBtn.addEventListener('click', async () => {
+        interactive = defaultInteractiveState();
+        saveInteractiveState(interactive);
+        flashButton('resetSimBtn');
+        await refreshBoard(false);
+      });
+    }
+
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn && refreshBtn.dataset.bound !== '1') {
+      refreshBtn.dataset.bound = '1';
+      refreshBtn.addEventListener('click', async () => {
+        flashButton('refreshBtn');
+        await refreshBoard(true);
+      });
+    }
   } catch (err) {
     document.getElementById('todayLine').textContent = `Failed to load progress data: ${err.message}`;
   }
 }
 
-document.getElementById('refreshBtn').addEventListener('click', bootstrap);
+async function bootstrap() {
+  try {
+    const state = await apiRequest('/api/state', 'GET');
+    serverAllowWrites = Boolean(state.allowWrites);
+  } catch {
+    serverAllowWrites = false;
+  }
+
+  if (!serverAllowWrites) {
+    writeSyncEnabled = false;
+    saveSyncMode(false);
+  }
+
+  await refreshBoard(true);
+}
+
 bootstrap();

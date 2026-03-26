@@ -16,10 +16,31 @@
           <p id="todayLine" class="sub">Loading mission...</p>
         </div>
         <div class="hero-actions">
-          <a class="btn" href="https://leetcode.com/problemset/" target="_blank" rel="noreferrer">Start Quest</a>
+          <a id="startPracticeLink" class="btn" href="/web/dsa.html?start=today">Start Today&apos;s Practice</a>
+          <a class="btn ghost" href="https://leetcode.com/problemset/" target="_blank" rel="noreferrer">Open LeetCode</a>
           <button id="refreshBtn" class="btn ghost">Refresh</button>
+          <button id="resetSimBtn" class="btn ghost">Reset Sim</button>
         </div>
       </header>
+
+      <section>
+        <article class="card">
+          <h2>🔄 Sync Mode</h2>
+          <div class="actions">
+            <input id="leetcodeUsernameInput" class="text-input" type="text" placeholder="LeetCode username" />
+            <button id="leetcodeSyncBtn" class="btn small">Sync from LeetCode</button>
+          </div>
+          <label class="sync-row">
+            <input id="leetcodeBootstrapToggle" type="checkbox" />
+            <span>Use bootstrap mode when recent submission history is hidden</span>
+          </label>
+          <label class="sync-row">
+            <input id="syncWriteToggle" type="checkbox" />
+            <span>Write interactions to real progress files via safe API</span>
+          </label>
+          <p id="syncModeLine" class="muted">Checking API status...</p>
+        </article>
+      </section>
 
       <section class="stats-grid">
         <article class="card stat"><h3>Current Streak</h3><p id="currentStreak">0</p></article>
@@ -33,6 +54,11 @@
           <h2>🎯 Daily Mission</h2>
           <p id="missionText">-</p>
           <p id="nudgeText" class="muted">-</p>
+          <p id="practiceBridgeLine" class="muted">We&apos;ll point today&apos;s mission directly into your guided DSA route.</p>
+          <div class="actions">
+            <a id="missionStartBtn" class="btn small ghost" href="/web/dsa.html?start=today">Start Mission</a>
+            <button id="missionCompleteBtn" class="btn small">Complete Mission</button>
+          </div>
           <div class="shield">
             <span>🛡️ Shield</span>
             <strong id="shieldText">0/1 used</strong>
@@ -52,6 +78,10 @@
           <p id="bossName">-</p>
           <p id="bossTheme" class="muted">-</p>
           <p id="bossProgress" class="muted">-</p>
+          <div class="actions">
+            <button id="bossAttackBtn" class="btn small">Attack Boss</button>
+            <button id="bossFocusBtn" class="btn small ghost">Focus Theme</button>
+          </div>
         </article>
         <article class="card">
           <h2>🏆 Tier Rewards</h2>
@@ -66,12 +96,20 @@
           <p id="leagueTier">-</p>
           <p id="leaguePoints" class="muted">-</p>
           <p id="eloLine" class="muted">-</p>
+          <div class="actions">
+            <button id="leagueGrindBtn" class="btn small">Grind Match</button>
+            <button id="eloDuelBtn" class="btn small ghost">ELO Duel</button>
+          </div>
         </article>
         <article class="card">
           <h2>🛡️ Weekly Raid (Solo Team)</h2>
           <p id="raidBoss">-</p>
           <p id="raidDamage" class="muted">-</p>
           <p id="raidAllies" class="muted">-</p>
+          <div class="actions">
+            <button id="raidAttackBtn" class="btn small">Raid Attack</button>
+            <button id="raidTeamSkillBtn" class="btn small ghost">Team Skill</button>
+          </div>
         </article>
       </section>
 
@@ -80,12 +118,19 @@
           <h2>✨ Win Streak Multiplier</h2>
           <p id="multiplierLine">-</p>
           <p id="boostedXpLine" class="muted">-</p>
+          <div class="actions">
+            <button id="streakChargeBtn" class="btn small">Streak Charge</button>
+          </div>
         </article>
         <article class="card">
           <h2>🎁 Daily Loot Chest</h2>
           <p id="chestLine">-</p>
           <p id="walletLine" class="muted">-</p>
-          <p class="muted">Open via terminal: <strong>npm run lc:chest -- --open</strong></p>
+          <div class="actions">
+            <button id="chestOpenBtn" class="btn small">Open Chest</button>
+            <button id="chestRerollBtn" class="btn small ghost">Reroll (1 token)</button>
+          </div>
+          <p class="muted">Terminal sync: <strong>npm run lc:chest -- --open</strong></p>
         </article>
       </section>
 
@@ -93,11 +138,26 @@
         <article class="card">
           <h2>📅 14-Day Heatbar</h2>
           <div id="heatbar" class="heatbar"></div>
+          <div class="actions">
+            <button id="backfillDayBtn" class="btn small ghost">Backfill Yesterday</button>
+          </div>
         </article>
 
         <article class="card">
           <h2>⚔️ Recent Solves</h2>
+          <div class="actions">
+            <button id="quickEasyBtn" class="btn small ghost">+ Easy</button>
+            <button id="quickMediumBtn" class="btn small ghost">+ Medium</button>
+            <button id="quickHardBtn" class="btn small ghost">+ Hard</button>
+          </div>
           <ul id="recentList" class="recent"></ul>
+        </article>
+      </section>
+
+      <section>
+        <article class="card">
+          <h2>🧾 Activity Log</h2>
+          <ul id="activityLog" class="recent"></ul>
         </article>
       </section>
     </main>
