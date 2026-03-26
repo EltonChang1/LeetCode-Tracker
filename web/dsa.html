@@ -55,6 +55,25 @@
         </article>
       </section>
 
+      <section>
+        <article class="card">
+          <div class="section-heading">
+            <div>
+              <h2>Sync Practice State</h2>
+              <p class="muted">Keep DSA progress portable across browsers and devices when write mode is enabled.</p>
+            </div>
+          </div>
+          <label class="sync-row">
+            <input id="dsaSyncToggle" type="checkbox" />
+            <span>Sync DSA notes, review dates, confidence, and session state to `progress/dsa-state.json`</span>
+          </label>
+          <div class="actions">
+            <button id="pullDsaStateBtn" class="btn small ghost" type="button">Pull Latest State</button>
+          </div>
+          <p id="dsaSyncLine" class="muted">Checking DSA sync status...</p>
+        </article>
+      </section>
+
       <section class="stats-grid dsa-stats">
         <article class="card stat">
           <h3>Progress</h3>

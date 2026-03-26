@@ -1,4 +1,5 @@
 const DSA_STORAGE_KEY = 'lcq-dsa-state-v2';
+const DSA_SYNC_MODE_STORAGE_KEY = 'lcq-dsa-sync-mode';
 const DAILY_SET_SIZE = 3;
 const SESSION_STEPS = [
   { id: 'read', label: 'Read prompt', helper: 'Restate the goal and scan constraints before touching code.' },
@@ -99,6 +100,12 @@ const statusMeta = {
 
 let state = loadState();
 let rerollSeed = 0;
+let serverAllowWrites = false;
+let dsaSyncEnabled = loadDsaSyncMode();
+let syncTimer = null;
+let isPullingRemoteState = false;
+let lastSyncAt = '';
+let lastSyncError = '';
 
 function loadState() {
   try {
@@ -111,6 +118,78 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(DSA_STORAGE_KEY, JSON.stringify(state));
+  scheduleRemoteSync();
+}
+
+function loadDsaSyncMode() {
+  return localStorage.getItem(DSA_SYNC_MODE_STORAGE_KEY) === '1';
+}
+
+function saveDsaSyncMode(enabled) {
+  localStorage.setItem(DSA_SYNC_MODE_STORAGE_KEY, enabled ? '1' : '0');
+}
+
+async function apiRequest(url, method = 'GET', body) {
+  const response = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(json.error || 'API request failed');
+  }
+  return json;
+}
+
+function hasMeaningfulState(value) {
+  if (!value || typeof value !== 'object') return false;
+  return Object.keys(value).some((key) => key !== '__meta');
+}
+
+function scheduleRemoteSync() {
+  if (!dsaSyncEnabled || !serverAllowWrites || isPullingRemoteState) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    void pushDsaStateToServer();
+  }, 300);
+}
+
+async function pushDsaStateToServer() {
+  if (!dsaSyncEnabled || !serverAllowWrites) return;
+  try {
+    await apiRequest('/api/dsa-state', 'POST', { state });
+    lastSyncAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    lastSyncError = '';
+  } catch (error) {
+    lastSyncError = error.message;
+  }
+  renderSyncUi();
+}
+
+async function pullDsaStateFromServer() {
+  if (!serverAllowWrites) {
+    throw new Error('Write API is disabled. Start with npm run lc:web:write.');
+  }
+  isPullingRemoteState = true;
+  try {
+    const result = await apiRequest('/api/dsa-state', 'GET');
+    if (result.state && typeof result.state === 'object') {
+      state = result.state;
+      localStorage.setItem(DSA_STORAGE_KEY, JSON.stringify(state));
+    }
+    lastSyncAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    lastSyncError = '';
+  } catch (error) {
+    lastSyncError = error.message;
+    throw error;
+  } finally {
+    isPullingRemoteState = false;
+    render();
+  }
 }
 
 function todayKey() {
@@ -502,6 +581,31 @@ function renderStats(questions) {
   document.getElementById('masteredStat').textContent = String(mastered);
 }
 
+function renderSyncUi() {
+  const toggle = document.getElementById('dsaSyncToggle');
+  const line = document.getElementById('dsaSyncLine');
+  const pullBtn = document.getElementById('pullDsaStateBtn');
+  if (!toggle || !line || !pullBtn) return;
+
+  toggle.disabled = !serverAllowWrites;
+  toggle.checked = dsaSyncEnabled && serverAllowWrites;
+  pullBtn.disabled = !serverAllowWrites;
+
+  if (!serverAllowWrites) {
+    line.textContent = 'DSA sync unavailable until the web server is started with LCQ_ALLOW_WRITE=1.';
+    return;
+  }
+
+  if (lastSyncError) {
+    line.textContent = `DSA sync error: ${lastSyncError}`;
+    return;
+  }
+
+  line.textContent = dsaSyncEnabled
+    ? `DSA sync is on. Practice state writes to progress/dsa-state.json${lastSyncAt ? ` · last sync ${lastSyncAt}` : ''}.`
+    : 'DSA sync is off. Practice state is stored only in this browser.';
+}
+
 function renderCoachInsights(questions) {
   const container = document.getElementById('coachInsights');
   const insights = getPracticeInsights(questions);
@@ -784,6 +888,23 @@ function attachEventHandlers() {
   document.getElementById('dsaQuestions').addEventListener('click', handleDelegatedClick);
   document.getElementById('dsaQuestions').addEventListener('change', handleDelegatedChange);
   document.getElementById('dsaQuestions').addEventListener('input', handleDelegatedInput);
+  document.getElementById('dsaSyncToggle').addEventListener('change', async (event) => {
+    dsaSyncEnabled = Boolean(event.target.checked) && serverAllowWrites;
+    saveDsaSyncMode(dsaSyncEnabled);
+    if (dsaSyncEnabled) {
+      await pushDsaStateToServer();
+    } else {
+      lastSyncError = '';
+      renderSyncUi();
+    }
+  });
+  document.getElementById('pullDsaStateBtn').addEventListener('click', async () => {
+    try {
+      await pullDsaStateFromServer();
+    } catch {
+      renderSyncUi();
+    }
+  });
 }
 
 function maybeAutoStartFromQuery() {
@@ -928,6 +1049,7 @@ function render() {
   const questions = getAllQuestions();
   const filters = getFilters();
   updateHeroLine(questions);
+  renderSyncUi();
   renderSessionPanel(questions);
   renderCoachInsights(questions);
   renderStats(questions);
@@ -939,6 +1061,35 @@ function render() {
 document.addEventListener('DOMContentLoaded', () => {
   populateTopicFilter();
   attachEventHandlers();
+  void bootstrap();
+});
+
+async function bootstrap() {
+  try {
+    const serverState = await apiRequest('/api/state', 'GET');
+    serverAllowWrites = Boolean(serverState.allowWrites);
+  } catch {
+    serverAllowWrites = false;
+  }
+
+  if (!serverAllowWrites) {
+    dsaSyncEnabled = false;
+    saveDsaSyncMode(false);
+  } else if (dsaSyncEnabled) {
+    try {
+      const remote = await apiRequest('/api/dsa-state', 'GET');
+      if (hasMeaningfulState(remote.state) || !hasMeaningfulState(state)) {
+        state = remote.state && typeof remote.state === 'object' ? remote.state : {};
+        localStorage.setItem(DSA_STORAGE_KEY, JSON.stringify(state));
+        lastSyncAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else if (hasMeaningfulState(state)) {
+        await pushDsaStateToServer();
+      }
+    } catch (error) {
+      lastSyncError = error.message;
+    }
+  }
+
   render();
   maybeAutoStartFromQuery();
-});
+}
