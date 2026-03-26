@@ -1,0 +1,182 @@
+[
+  {
+    "id": 1,
+    "title": "Two Sum",
+    "slug": "two-sum",
+    "difficulty": "easy",
+    "functionName": "twoSum",
+    "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
+    "examples": [
+      {
+        "input": "nums = [2, 7, 11, 15], target = 9",
+        "output": "[0, 1]"
+      }
+    ],
+    "testCases": [
+      {
+        "label": "Basic pair",
+        "args": [[2, 7, 11, 15], 9],
+        "expected": [0, 1]
+      },
+      {
+        "label": "Middle pair",
+        "args": [[3, 2, 4], 6],
+        "expected": [1, 2]
+      },
+      {
+        "label": "Duplicate values",
+        "args": [[3, 3], 6],
+        "expected": [0, 1]
+      }
+    ],
+    "tags": ["array", "hash-table"],
+    "starterCode": {
+      "js": "function twoSum(nums, target) {\n  // Return the two indices whose values add up to target.\n  return [];\n}"
+    }
+  },
+  {
+    "id": 20,
+    "title": "Valid Parentheses",
+    "slug": "valid-parentheses",
+    "difficulty": "easy",
+    "functionName": "isValid",
+    "description": "Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.",
+    "examples": [
+      {
+        "input": "s = \"()[]{}\"",
+        "output": "true"
+      }
+    ],
+    "testCases": [
+      {
+        "label": "Balanced simple",
+        "args": ["()"],
+        "expected": true
+      },
+      {
+        "label": "Mixed valid",
+        "args": ["()[]{}"],
+        "expected": true
+      },
+      {
+        "label": "Wrong nesting",
+        "args": ["(]"],
+        "expected": false
+      },
+      {
+        "label": "Open leftover",
+        "args": ["((("],
+        "expected": false
+      }
+    ],
+    "tags": ["stack", "string"],
+    "starterCode": {
+      "js": "function isValid(s) {\n  // Use a stack to check matching closing brackets.\n  return false;\n}"
+    }
+  },
+  {
+    "id": 844,
+    "title": "Backspace String Compare",
+    "slug": "backspace-string-compare",
+    "difficulty": "easy",
+    "functionName": "backspaceCompare",
+    "description": "Given two strings s and t, return true if they are equal when both are typed into empty text editors and '#' means a backspace character.",
+    "examples": [
+      {
+        "input": "s = \"ab#c\", t = \"ad#c\"",
+        "output": "true"
+      }
+    ],
+    "testCases": [
+      {
+        "label": "Both reduce to ac",
+        "args": ["ab#c", "ad#c"],
+        "expected": true
+      },
+      {
+        "label": "Both reduce to empty",
+        "args": ["ab##", "c#d#"],
+        "expected": true
+      },
+      {
+        "label": "Different result",
+        "args": ["a#c", "b"],
+        "expected": false
+      }
+    ],
+    "tags": ["string", "two-pointers"],
+    "starterCode": {
+      "js": "function backspaceCompare(s, t) {\n  // Compare the two strings after processing backspaces.\n  return false;\n}"
+    }
+  },
+  {
+    "id": 1331,
+    "title": "Rank Transform of an Array",
+    "slug": "rank-transform-of-an-array",
+    "difficulty": "easy",
+    "functionName": "arrayRankTransform",
+    "description": "Given an array of integers arr, replace each element with its rank when the array is sorted. The rank starts at 1 and equal values share the same rank.",
+    "examples": [
+      {
+        "input": "arr = [40,10,20,30]",
+        "output": "[4,1,2,3]"
+      }
+    ],
+    "testCases": [
+      {
+        "label": "Distinct values",
+        "args": [[40, 10, 20, 30]],
+        "expected": [4, 1, 2, 3]
+      },
+      {
+        "label": "Repeated values",
+        "args": [[100, 100, 100]],
+        "expected": [1, 1, 1]
+      },
+      {
+        "label": "Mixed duplicates",
+        "args": [[37, 12, 28, 9, 100, 56, 80, 5, 12]],
+        "expected": [5, 3, 4, 2, 8, 6, 7, 1, 3]
+      }
+    ],
+    "tags": ["array", "sorting", "hash-table"],
+    "starterCode": {
+      "js": "function arrayRankTransform(arr) {\n  // Map each unique sorted value to a rank.\n  return [];\n}"
+    }
+  },
+  {
+    "id": 739,
+    "title": "Daily Temperatures",
+    "slug": "daily-temperatures",
+    "difficulty": "medium",
+    "functionName": "dailyTemperatures",
+    "description": "Given an array of daily temperatures, return an array answer such that answer[i] is the number of days until a warmer temperature. If there is no future day for which this is possible, keep 0.",
+    "examples": [
+      {
+        "input": "temperatures = [73,74,75,71,69,72,76,73]",
+        "output": "[1,1,4,2,1,1,0,0]"
+      }
+    ],
+    "testCases": [
+      {
+        "label": "Classic monotonic stack case",
+        "args": [[73, 74, 75, 71, 69, 72, 76, 73]],
+        "expected": [1, 1, 4, 2, 1, 1, 0, 0]
+      },
+      {
+        "label": "Always increasing",
+        "args": [[30, 40, 50, 60]],
+        "expected": [1, 1, 1, 0]
+      },
+      {
+        "label": "Always decreasing",
+        "args": [[90, 80, 70]],
+        "expected": [0, 0, 0]
+      }
+    ],
+    "tags": ["stack", "monotonic-stack"],
+    "starterCode": {
+      "js": "function dailyTemperatures(temperatures) {\n  // Return how many days each temperature must wait for a warmer day.\n  return [];\n}"
+    }
+  }
+]

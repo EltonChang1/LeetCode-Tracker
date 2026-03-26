@@ -279,6 +279,10 @@ a:focus-visible {
   gap: 12px;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .session-card,
 .focus-card {
   display: grid;
@@ -344,6 +348,100 @@ a:focus-visible {
 .coach-card h3 {
   color: #fff;
   margin-bottom: 8px;
+}
+
+.practice-shell {
+  align-items: stretch;
+}
+
+.practice-card {
+  display: grid;
+  gap: 14px;
+}
+
+.practice-empty {
+  border: 1px dashed var(--stroke);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.practice-arena {
+  display: grid;
+  gap: 14px;
+}
+
+.practice-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.practice-examples,
+.practice-results {
+  display: grid;
+  gap: 10px;
+}
+
+.example-card,
+.result-card,
+.stat-mini {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.example-card h4,
+.result-card h4,
+.stat-mini h3 {
+  margin: 0 0 8px;
+  color: #fff;
+}
+
+.example-card pre,
+.result-card pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+}
+
+.code-editor {
+  width: 100%;
+  min-height: 280px;
+  resize: vertical;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(6, 10, 26, 0.94);
+  color: var(--text);
+  padding: 14px;
+  font: 13px/1.6 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.practice-feedback {
+  display: grid;
+  gap: 10px;
+}
+
+.result-card.pass {
+  border-color: rgba(45, 228, 141, 0.65);
+}
+
+.result-card.fail {
+  border-color: rgba(255, 120, 120, 0.65);
+}
+
+.practice-analytics-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stat-mini p {
+  margin: 0;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 800;
 }
 
 .daily-card {
@@ -538,14 +636,16 @@ a:focus-visible {
   .daily-card,
   .question-top,
   .section-heading,
-  .topic-line {
+  .topic-line,
+  .practice-meta {
     flex-direction: column;
   }
 }
 
 @media (max-width: 640px) {
   .dsa-filters,
-  .stats-grid {
+  .stats-grid,
+  .practice-analytics-grid {
     grid-template-columns: 1fr;
   }
 

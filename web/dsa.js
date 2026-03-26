@@ -1,5 +1,7 @@
 const DSA_STORAGE_KEY = 'lcq-dsa-state-v2';
 const DSA_SYNC_MODE_STORAGE_KEY = 'lcq-dsa-sync-mode';
+const PRACTICE_SUBMISSIONS_STORAGE_KEY = 'lcq-practice-submissions-v1';
+const PRACTICE_DRAFT_STORAGE_KEY = 'lcq-practice-drafts-v1';
 const DAILY_SET_SIZE = 3;
 const SESSION_STEPS = [
   { id: 'read', label: 'Read prompt', helper: 'Restate the goal and scan constraints before touching code.' },
@@ -106,6 +108,12 @@ let syncTimer = null;
 let isPullingRemoteState = false;
 let lastSyncAt = '';
 let lastSyncError = '';
+let questionCatalog = [];
+let submissionStore = loadPracticeSubmissions();
+let practiceDrafts = loadPracticeDrafts();
+let currentPracticeQuestion = null;
+let latestPracticeResult = null;
+let practiceMessage = '';
 
 function loadState() {
   try {
@@ -127,6 +135,33 @@ function loadDsaSyncMode() {
 
 function saveDsaSyncMode(enabled) {
   localStorage.setItem(DSA_SYNC_MODE_STORAGE_KEY, enabled ? '1' : '0');
+}
+
+function loadPracticeSubmissions() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PRACTICE_SUBMISSIONS_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePracticeSubmissions(submissions) {
+  submissionStore = Array.isArray(submissions) ? submissions.slice(0, 200) : [];
+  localStorage.setItem(PRACTICE_SUBMISSIONS_STORAGE_KEY, JSON.stringify(submissionStore));
+}
+
+function loadPracticeDrafts() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PRACTICE_DRAFT_STORAGE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePracticeDrafts() {
+  localStorage.setItem(PRACTICE_DRAFT_STORAGE_KEY, JSON.stringify(practiceDrafts));
 }
 
 async function apiRequest(url, method = 'GET', body) {
@@ -473,6 +508,7 @@ function startPracticeSession() {
     status: getQuestionState(firstId).status === 'not-started' ? 'in-progress' : getQuestionState(firstId).status,
     lastTouched: todayKey(),
   });
+  setPracticeQuestion(firstId);
   requestAnimationFrame(() => {
     document.getElementById(`question-${firstId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -549,6 +585,7 @@ function completeSessionQuestion() {
     status: getQuestionState(nextId).status === 'not-started' ? 'in-progress' : getQuestionState(nextId).status,
     lastTouched: todayKey(),
   });
+  setPracticeQuestion(nextId);
   requestAnimationFrame(() => {
     document.getElementById(`question-${nextId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -604,6 +641,209 @@ function renderSyncUi() {
   line.textContent = dsaSyncEnabled
     ? `DSA sync is on. Practice state writes to progress/dsa-state.json${lastSyncAt ? ` · last sync ${lastSyncAt}` : ''}.`
     : 'DSA sync is off. Practice state is stored only in this browser.';
+}
+
+function findRunnableQuestion(id) {
+  const needle = String(id || '').trim();
+  return questionCatalog.find((question) => String(question.slug) === needle || String(question.id) === needle) || null;
+}
+
+function formatValue(value) {
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value);
+}
+
+function getQuestionSubmissionSummary(questionSlug) {
+  const attempts = submissionStore.filter((submission) => submission.questionSlug === questionSlug);
+  const solved = attempts.filter((submission) => submission.passedAll).length;
+  return {
+    attempts,
+    solved,
+    latest: attempts[0] || null,
+  };
+}
+
+function setPracticeQuestion(questionId, options = {}) {
+  const question = findRunnableQuestion(questionId);
+  currentPracticeQuestion = question;
+  latestPracticeResult = null;
+  practiceMessage = '';
+
+  const emptyState = document.getElementById('practiceEmptyState');
+  const arena = document.getElementById('practiceArena');
+  const availability = document.getElementById('practiceAvailability');
+
+  if (!question) {
+    if (emptyState) emptyState.classList.remove('hidden');
+    if (arena) arena.classList.add('hidden');
+    if (availability) availability.textContent = 'Catalog Partial';
+    renderSubmissionAnalytics();
+    return;
+  }
+
+  if (emptyState) emptyState.classList.add('hidden');
+  if (arena) arena.classList.remove('hidden');
+  if (availability) availability.textContent = 'Runnable';
+
+  const latestSubmission = getQuestionSubmissionSummary(question.slug).latest;
+  const existingDraft = practiceDrafts[question.slug];
+  const starter = question.starterCode?.js || '';
+  const shouldForceStarter = Boolean(options.forceStarter);
+  const code = shouldForceStarter ? starter : (existingDraft || latestSubmission?.code || starter);
+  const codeInput = document.getElementById('practiceCode');
+  if (codeInput) codeInput.value = code;
+
+  renderPracticeArena();
+  renderSubmissionAnalytics();
+}
+
+function renderPracticeArena() {
+  const subtitle = document.getElementById('practiceSubtitle');
+  const title = document.getElementById('practiceTitle');
+  const kicker = document.getElementById('practiceKicker');
+  const description = document.getElementById('practiceDescription');
+  const tags = document.getElementById('practiceTags');
+  const examples = document.getElementById('practiceExamples');
+  const statusLine = document.getElementById('practiceStatusLine');
+  const results = document.getElementById('practiceResults');
+
+  if (!currentPracticeQuestion) {
+    if (subtitle) subtitle.textContent = 'Pick a runnable question to read the prompt, write code, run tests, and submit inside the site.';
+    if (statusLine) statusLine.textContent = 'Runnable prompts are available for questions included in questions.json.';
+    if (results) results.innerHTML = '';
+    return;
+  }
+
+  const summary = getQuestionSubmissionSummary(currentPracticeQuestion.slug);
+  if (subtitle) {
+    subtitle.textContent = summary.latest
+      ? `Latest browser result: ${summary.latest.passedCount}/${summary.latest.totalTests} tests passed${summary.latest.createdAt ? ` · ${new Date(summary.latest.createdAt).toLocaleString()}` : ''}.`
+      : 'Write your solution, run the tests, then submit the attempt to save analytics.';
+  }
+  if (title) title.textContent = currentPracticeQuestion.title;
+  if (kicker) kicker.textContent = `${titleCase(currentPracticeQuestion.difficulty)} · ${currentPracticeQuestion.slug}`;
+  if (description) description.textContent = currentPracticeQuestion.description;
+  if (tags) {
+    tags.innerHTML = (currentPracticeQuestion.tags || []).map((tag) => `<span class="chip">${tag}</span>`).join('');
+  }
+  if (examples) {
+    examples.innerHTML = (currentPracticeQuestion.examples || []).map((example, index) => `
+      <article class="example-card">
+        <h4>Example ${index + 1}</h4>
+        <pre>Input: ${example.input}\nOutput: ${example.output}</pre>
+      </article>
+    `).join('');
+  }
+
+  if (statusLine) {
+    if (practiceMessage) {
+      statusLine.textContent = practiceMessage;
+    } else if (latestPracticeResult) {
+      statusLine.textContent = latestPracticeResult.passedAll
+        ? `All tests passed in ${latestPracticeResult.durationMs}ms.`
+        : `${latestPracticeResult.passedCount}/${latestPracticeResult.totalTests} tests passed in ${latestPracticeResult.durationMs}ms.`;
+    } else {
+      statusLine.textContent = summary.latest
+        ? `Latest saved attempt: ${summary.latest.passedCount}/${summary.latest.totalTests} tests passed.`
+        : 'No submission yet.';
+    }
+  }
+
+  if (results) {
+    const resultSource = latestPracticeResult?.results || [];
+    results.innerHTML = resultSource.map((result) => `
+      <article class="result-card ${result.passed ? 'pass' : 'fail'}">
+        <h4>${result.label} · ${result.passed ? 'Pass' : 'Fail'}</h4>
+        <pre>Args: ${formatValue(result.args)}\nExpected: ${formatValue(result.expected)}\nActual: ${formatValue(result.actual)}${result.error ? `\nError: ${result.error}` : ''}</pre>
+      </article>
+    `).join('');
+  }
+}
+
+function renderSubmissionAnalytics() {
+  const attemptsStat = document.getElementById('attemptsStat');
+  const passRateStat = document.getElementById('passRateStat');
+  const questionAttemptsStat = document.getElementById('questionAttemptsStat');
+  const questionSolvedStat = document.getElementById('questionSolvedStat');
+  const latestAttemptLine = document.getElementById('latestAttemptLine');
+  const history = document.getElementById('submissionHistory');
+
+  const totalAttempts = submissionStore.length;
+  const totalPassed = submissionStore.filter((submission) => submission.passedAll).length;
+  const activeSummary = currentPracticeQuestion ? getQuestionSubmissionSummary(currentPracticeQuestion.slug) : { attempts: [], solved: 0, latest: null };
+
+  if (attemptsStat) attemptsStat.textContent = String(totalAttempts);
+  if (passRateStat) passRateStat.textContent = `${totalAttempts ? Math.round((totalPassed / totalAttempts) * 100) : 0}%`;
+  if (questionAttemptsStat) questionAttemptsStat.textContent = String(activeSummary.attempts.length);
+  if (questionSolvedStat) questionSolvedStat.textContent = String(activeSummary.solved);
+
+  if (latestAttemptLine) {
+    const latest = activeSummary.latest || submissionStore[0];
+    latestAttemptLine.textContent = latest
+      ? `Latest attempt: ${latest.questionSlug} · ${latest.passedCount}/${latest.totalTests} tests · ${new Date(latest.createdAt).toLocaleString()}`
+      : 'No browser submissions yet.';
+  }
+
+  if (history) {
+    const list = currentPracticeQuestion ? activeSummary.attempts.slice(0, 5) : submissionStore.slice(0, 5);
+    history.innerHTML = list.length
+      ? list.map((submission) => `<li>${submission.questionSlug} · ${submission.passedCount}/${submission.totalTests} tests · ${submission.passedAll ? 'passed' : 'needs work'}</li>`).join('')
+      : '<li>No saved attempts yet.</li>';
+  }
+}
+
+async function refreshPracticeData() {
+  try {
+    questionCatalog = await apiRequest('/api/questions', 'GET');
+  } catch {
+    questionCatalog = [];
+  }
+
+  try {
+    const payload = await apiRequest('/api/question-submissions', 'GET');
+    const remoteSubmissions = Array.isArray(payload.submissions) ? payload.submissions : [];
+    if (remoteSubmissions.length || !submissionStore.length) {
+      savePracticeSubmissions(remoteSubmissions);
+    }
+  } catch {
+    // Keep local submissions as fallback when the server is unavailable.
+  }
+}
+
+async function performPracticeSubmission({ persist }) {
+  if (!currentPracticeQuestion) return;
+  const codeInput = document.getElementById('practiceCode');
+  const code = codeInput?.value || '';
+  practiceDrafts[currentPracticeQuestion.slug] = code;
+  savePracticeDrafts();
+
+  const result = await apiRequest(`/api/questions/${currentPracticeQuestion.slug}/submit`, 'POST', {
+    language: 'js',
+    code,
+    persist,
+  });
+
+  latestPracticeResult = result;
+  practiceMessage = '';
+  if (!result.persisted) {
+    const localEntry = {
+      questionSlug: result.questionSlug,
+      language: result.language,
+      passedAll: result.passedAll,
+      passedCount: result.passedCount,
+      totalTests: result.totalTests,
+      durationMs: result.durationMs,
+      createdAt: new Date().toISOString(),
+      code: result.code,
+      results: result.results,
+    };
+    savePracticeSubmissions([localEntry, ...submissionStore]);
+  } else {
+    await refreshPracticeData();
+  }
+
+  renderPracticeArena();
+  renderSubmissionAnalytics();
 }
 
 function renderCoachInsights(questions) {
@@ -879,6 +1119,7 @@ function attachEventHandlers() {
     if (!questions.length) return;
     const choice = questions[Math.floor(Math.random() * questions.length)];
     updateQuestionState(choice.id, { expanded: true, lastTouched: getQuestionState(choice.id).lastTouched });
+    setPracticeQuestion(choice.id);
     requestAnimationFrame(() => {
       document.getElementById(`question-${choice.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -904,6 +1145,33 @@ function attachEventHandlers() {
     } catch {
       renderSyncUi();
     }
+  });
+  document.getElementById('loadStarterBtn').addEventListener('click', () => {
+    if (!currentPracticeQuestion) return;
+    setPracticeQuestion(currentPracticeQuestion.slug, { forceStarter: true });
+  });
+  document.getElementById('runTestsBtn').addEventListener('click', async () => {
+    try {
+      await performPracticeSubmission({ persist: false });
+    } catch (error) {
+      latestPracticeResult = null;
+      practiceMessage = error.message;
+      renderPracticeArena();
+    }
+  });
+  document.getElementById('submitCodeBtn').addEventListener('click', async () => {
+    try {
+      await performPracticeSubmission({ persist: true });
+    } catch (error) {
+      latestPracticeResult = null;
+      practiceMessage = error.message;
+      renderPracticeArena();
+    }
+  });
+  document.getElementById('practiceCode').addEventListener('input', (event) => {
+    if (!currentPracticeQuestion) return;
+    practiceDrafts[currentPracticeQuestion.slug] = event.target.value;
+    savePracticeDrafts();
   });
 }
 
@@ -937,6 +1205,7 @@ function handleDelegatedClick(event) {
       expanded: true,
       lastTouched: todayKey(),
     });
+    setPracticeQuestion(id);
     requestAnimationFrame(() => {
       document.getElementById(`question-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -982,6 +1251,7 @@ function handleDelegatedClick(event) {
     updateQuestionState(id, {
       expanded: true,
     });
+    setPracticeQuestion(id);
     requestAnimationFrame(() => {
       document.getElementById(`question-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -1055,6 +1325,8 @@ function render() {
   renderStats(questions);
   renderDailySet(questions);
   renderTopicProgress(questions);
+  renderPracticeArena();
+  renderSubmissionAnalytics();
   renderBoard(questions, filters);
 }
 
@@ -1081,7 +1353,7 @@ async function bootstrap() {
       if (hasMeaningfulState(remote.state) || !hasMeaningfulState(state)) {
         state = remote.state && typeof remote.state === 'object' ? remote.state : {};
         localStorage.setItem(DSA_STORAGE_KEY, JSON.stringify(state));
-        lastSyncAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      lastSyncAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       } else if (hasMeaningfulState(state)) {
         await pushDsaStateToServer();
       }
@@ -1090,6 +1362,7 @@ async function bootstrap() {
     }
   }
 
+  await refreshPracticeData();
   render();
   maybeAutoStartFromQuery();
 }

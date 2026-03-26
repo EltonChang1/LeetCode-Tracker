@@ -158,6 +158,80 @@
         </div>
       </section>
 
+      <section class="layout-two practice-shell">
+        <article class="card practice-card">
+          <div class="section-heading">
+            <div>
+              <h2>Practice Arena</h2>
+              <p id="practiceSubtitle" class="muted">Pick a runnable question to read the prompt, write code, run tests, and submit inside the site.</p>
+            </div>
+            <span id="practiceAvailability" class="pill">Catalog Loading</span>
+          </div>
+
+          <div id="practiceEmptyState" class="practice-empty">
+            <p class="muted">Choose a question from today&apos;s route or the board to load it here. Runnable prompts are backed by `questions.json`.</p>
+          </div>
+
+          <div id="practiceArena" class="practice-arena hidden">
+            <div class="practice-meta">
+              <div>
+                <p id="practiceKicker" class="daily-kicker">Prompt</p>
+                <h3 id="practiceTitle">-</h3>
+              </div>
+              <div class="chips" id="practiceTags"></div>
+            </div>
+
+            <p id="practiceDescription" class="muted">-</p>
+            <div id="practiceExamples" class="practice-examples"></div>
+
+            <label class="filter-field">
+              <span>JavaScript Solution</span>
+              <textarea id="practiceCode" class="code-editor" spellcheck="false" placeholder="Your solution will appear here..."></textarea>
+            </label>
+
+            <div class="actions">
+              <button id="loadStarterBtn" class="btn small ghost" type="button">Load Starter</button>
+              <button id="runTestsBtn" class="btn small ghost" type="button">Run Tests</button>
+              <button id="submitCodeBtn" class="btn small" type="button">Submit Attempt</button>
+            </div>
+
+            <div class="practice-feedback">
+              <p id="practiceStatusLine" class="muted">No submission yet.</p>
+              <div id="practiceResults" class="practice-results"></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card practice-card">
+          <div class="section-heading">
+            <div>
+              <h2>Submission Analytics</h2>
+              <p class="muted">Track browser-based reps, pass rate, and the latest attempt for the selected question.</p>
+            </div>
+          </div>
+          <div class="stats-grid practice-analytics-grid">
+            <article class="stat-mini">
+              <h3>Total Attempts</h3>
+              <p id="attemptsStat">0</p>
+            </article>
+            <article class="stat-mini">
+              <h3>Pass Rate</h3>
+              <p id="passRateStat">0%</p>
+            </article>
+            <article class="stat-mini">
+              <h3>Question Attempts</h3>
+              <p id="questionAttemptsStat">0</p>
+            </article>
+            <article class="stat-mini">
+              <h3>Question Solves</h3>
+              <p id="questionSolvedStat">0</p>
+            </article>
+          </div>
+          <p id="latestAttemptLine" class="muted">No browser submissions yet.</p>
+          <ul id="submissionHistory" class="recent"></ul>
+        </article>
+      </section>
+
       <section>
         <div class="section-heading dsa-results-heading">
           <div>
