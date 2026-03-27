@@ -92,6 +92,54 @@ const topicHints = {
   Greedy: ['State why a local best choice cannot hurt future options.', 'Greedy gets much safer once you can prove an exchange argument.'],
 };
 
+const topicLessons = {
+  Arrays: {
+    whenToUse: 'Start here when the problem is about scanning, indexing, sorting, or building a direct lookup.',
+    teachingFocus: 'Learn to replace repeated work with hashing, sorting, or a maintained invariant.',
+    commonTrap: 'Writing nested loops before asking what information can be carried forward.',
+  },
+  'Two Pointers': {
+    whenToUse: 'Use this when a sequence can be processed from both ends or with a moving gap.',
+    teachingFocus: 'Define what makes the left pointer move and what makes the right pointer move.',
+    commonTrap: 'Moving both pointers without a reason tied to the invariant.',
+  },
+  'Sliding Window': {
+    whenToUse: 'Reach for this when the problem asks for a best substring/subarray under a validity condition.',
+    teachingFocus: 'Name the window condition first, then decide when to expand and when to shrink.',
+    commonTrap: 'Shrinking too early before the window has satisfied the target condition.',
+  },
+  'Linked Lists': {
+    whenToUse: 'Choose this when pointer movement matters more than random indexing.',
+    teachingFocus: 'Sketch node roles before coding so each pointer has one clear job.',
+    commonTrap: 'Mutating links before saving the next node you still need.',
+  },
+  Stacks: {
+    whenToUse: 'Use a stack when the newest unresolved item must be handled before older ones.',
+    teachingFocus: 'Decide exactly what belongs in the stack: values, indices, or state snapshots.',
+    commonTrap: 'Pushing raw values when indices would make the next step much easier.',
+  },
+  Trees: {
+    whenToUse: 'Use trees when hierarchy, recursion, or level-based processing drives the solution.',
+    teachingFocus: 'Write down what each recursive call returns before writing the recursion.',
+    commonTrap: 'Recursing without a contract for the meaning of the return value.',
+  },
+  Graphs: {
+    whenToUse: 'Use graphs when the problem is really about connections, reachability, or minimum steps.',
+    teachingFocus: 'Model the nodes and edges cleanly before choosing BFS, DFS, or Dijkstra.',
+    commonTrap: 'Starting traversal before deciding what a node actually represents.',
+  },
+  Heaps: {
+    whenToUse: 'Use a heap when you repeatedly need the smallest or largest live candidate.',
+    teachingFocus: 'Keep only the information needed for the next best decision.',
+    commonTrap: 'Dumping everything into the heap instead of maintaining a small, meaningful frontier.',
+  },
+  'Dynamic Programming': {
+    whenToUse: 'Use DP when the answer is built from overlapping smaller answers.',
+    teachingFocus: 'Define the state and transition in plain English before coding.',
+    commonTrap: 'Jumping into loops before the state definition is stable.',
+  },
+};
+
 const statusMeta = {
   'not-started': { label: 'Not Started', className: 'status-not-started' },
   'in-progress': { label: 'In Progress', className: 'status-in-progress' },
@@ -353,6 +401,48 @@ function getCurriculumRank(question) {
   return 999;
 }
 
+function getActivePhasePlan() {
+  const phases = Array.isArray(trainingDb.curriculum?.phasePlan) ? trainingDb.curriculum.phasePlan : [];
+  return phases.find((phase) => phase.id === trainingDb.derived?.activePhaseId) || phases[0] || null;
+}
+
+function getUnlockedQuestionIds(questions) {
+  const phase = getActivePhasePlan();
+  if (!phase) return new Set(questions.map((question) => question.id));
+
+  const rules = trainingDb.curriculum?.unlockRules || {};
+  const baseQuestions = Math.max(1, Number(rules.baseQuestionsPerPhase || 3));
+  const perUnlock = Math.max(1, Number(rules.questionsPerUnlockStep || 2));
+  const masteredPerUnlock = Math.max(1, Number(rules.masteredQuestionsPerUnlock || 2));
+
+  const phaseQuestions = [...questions]
+    .filter((question) => phase.topics.includes(question.topic))
+    .sort((a, b) => getCurriculumRank(a) - getCurriculumRank(b) || a.title.localeCompare(b.title));
+
+  const priorTopics = new Set();
+  const phasePlan = Array.isArray(trainingDb.curriculum?.phasePlan) ? trainingDb.curriculum.phasePlan : [];
+  for (const item of phasePlan) {
+    if (item.id === phase.id) break;
+    (item.topics || []).forEach((topic) => priorTopics.add(topic));
+  }
+
+  const priorQuestions = questions.filter((question) => priorTopics.has(question.topic));
+  const masteredInPhase = phaseQuestions.filter((question) => question.state.status === 'mastered').length;
+  const extraUnlocks = Math.floor(masteredInPhase / masteredPerUnlock) * perUnlock;
+  const unlockedPhaseQuestions = phaseQuestions.slice(0, Math.min(phaseQuestions.length, baseQuestions + extraUnlocks));
+
+  return new Set([...priorQuestions, ...unlockedPhaseQuestions].map((question) => question.id));
+}
+
+function getTeachingLesson(question) {
+  const lesson = topicLessons[question.topic] || {
+    whenToUse: 'Use the core invariant of the topic to choose the next move.',
+    teachingFocus: 'Explain the pattern in plain English before coding.',
+    commonTrap: 'Coding too early before the pattern is fully named.',
+  };
+  return lesson;
+}
+
 function getFilters() {
   return {
     search: document.getElementById('searchInput')?.value.trim().toLowerCase() || '',
@@ -506,7 +596,9 @@ function getPracticeInsights(questions) {
 }
 
 function buildRecommendedQueue(questions) {
-  return [...questions]
+  const unlockedIds = getUnlockedQuestionIds(questions);
+  const unlockedQuestions = questions.filter((question) => unlockedIds.has(question.id));
+  return [...(unlockedQuestions.length ? unlockedQuestions : questions)]
     .sort((a, b) => {
       const aDue = a.review.isDue ? 1 : 0;
       const bDue = b.review.isDue ? 1 : 0;
@@ -681,6 +773,7 @@ function renderIdentityAndCurriculum(questions) {
   const curriculumTopics = document.getElementById('curriculumTopics');
   const curriculumQuestionLine = document.getElementById('curriculumQuestionLine');
   const curriculumBlockersLine = document.getElementById('curriculumBlockersLine');
+  const curriculumUnlockLine = document.getElementById('curriculumUnlockLine');
   const databaseLine = document.getElementById('databaseLine');
   const databaseFocusLine = document.getElementById('databaseFocusLine');
 
@@ -706,6 +799,7 @@ function renderIdentityAndCurriculum(questions) {
 
   const nextCurriculumQuestion = [...questions]
     .filter((question) => question.state.status !== 'mastered')
+    .filter((question) => getUnlockedQuestionIds(questions).has(question.id))
     .sort((a, b) => getCurriculumRank(a) - getCurriculumRank(b) || a.title.localeCompare(b.title))[0];
 
   if (curriculumQuestionLine) {
@@ -718,6 +812,15 @@ function renderIdentityAndCurriculum(questions) {
     curriculumBlockersLine.textContent = blockers.length
       ? `To unlock the next phase: ${blockers.join(' · ')}`
       : 'All topics in this phase are healthy enough to advance when you are ready.';
+  }
+  if (curriculumUnlockLine) {
+    const phase = getActivePhasePlan();
+    const unlockedIds = getUnlockedQuestionIds(questions);
+    const phaseQuestions = phase ? questions.filter((question) => phase.topics.includes(question.topic)) : questions;
+    const unlockedCount = phaseQuestions.filter((question) => unlockedIds.has(question.id)).length;
+    curriculumUnlockLine.textContent = phase
+      ? `Unlocked ${unlockedCount}/${phaseQuestions.length} questions in ${phase.label}. More questions unlock as you master this phase.`
+      : 'All questions are available.';
   }
 
   if (databaseLine) {
@@ -789,6 +892,7 @@ function renderPracticeArena() {
   const title = document.getElementById('practiceTitle');
   const kicker = document.getElementById('practiceKicker');
   const description = document.getElementById('practiceDescription');
+  const lessonCard = document.getElementById('practiceLesson');
   const tags = document.getElementById('practiceTags');
   const examples = document.getElementById('practiceExamples');
   const statusLine = document.getElementById('practiceStatusLine');
@@ -797,6 +901,7 @@ function renderPracticeArena() {
   if (!currentPracticeQuestion) {
     if (subtitle) subtitle.textContent = 'Pick a runnable question to read the prompt, write code, run tests, and submit inside the site.';
     if (statusLine) statusLine.textContent = 'Runnable prompts are available for questions included in questions.json.';
+    if (lessonCard) lessonCard.innerHTML = '';
     if (results) results.innerHTML = '';
     return;
   }
@@ -810,6 +915,15 @@ function renderPracticeArena() {
   if (title) title.textContent = currentPracticeQuestion.title;
   if (kicker) kicker.textContent = `${titleCase(currentPracticeQuestion.difficulty)} · ${currentPracticeQuestion.slug}`;
   if (description) description.textContent = currentPracticeQuestion.description;
+  if (lessonCard) {
+    const lesson = getTeachingLesson(currentPracticeQuestion);
+    lessonCard.innerHTML = `
+      <h4>How This Topic Teaches You</h4>
+      <p><strong>When to use it:</strong> ${lesson.whenToUse}</p>
+      <p><strong>Focus while solving:</strong> ${lesson.teachingFocus}</p>
+      <p><strong>Common trap:</strong> ${lesson.commonTrap}</p>
+    `;
+  }
   if (tags) {
     tags.innerHTML = (currentPracticeQuestion.tags || []).map((tag) => `<span class="chip">${tag}</span>`).join('');
   }
@@ -964,6 +1078,14 @@ function renderCoachInsights(questions) {
       body: `${insights.lowConfidence.title} was solved, but confidence is still low. Queue it for a cleaner second pass.`,
     });
   }
+  const nextQuestion = questions.find((question) => buildRecommendedQueue(questions)[0] === question.id);
+  if (nextQuestion) {
+    const lesson = getTeachingLesson(nextQuestion);
+    cards.push({
+      title: `What to learn from ${nextQuestion.topic}`,
+      body: `${lesson.teachingFocus} Watch out for: ${lesson.commonTrap}`,
+    });
+  }
 
   container.innerHTML = cards.length
     ? cards.map((card) => `
@@ -1071,7 +1193,8 @@ function renderTopicProgress(questions) {
 
 function renderBoard(questions, filters) {
   const board = document.getElementById('dsaQuestions');
-  const filtered = filterQuestions(questions, filters);
+  const unlockedIds = getUnlockedQuestionIds(questions);
+  const filtered = filterQuestions(questions, filters).filter((question) => unlockedIds.has(question.id));
   document.getElementById('resultsLine').textContent = `${filtered.length} question${filtered.length === 1 ? '' : 's'} match your current filters.`;
 
   board.innerHTML = filtered.length
@@ -1082,6 +1205,7 @@ function renderBoard(questions, filters) {
 function renderQuestionCard(question) {
   const status = statusMeta[question.state.status] || statusMeta['not-started'];
   const confidenceLabel = question.state.confidence ? `${question.state.confidence}/5 confidence` : 'No confidence rating yet';
+  const lesson = getTeachingLesson(question);
 
   return `
     <article class="card dsa-question-card ${question.state.expanded ? 'expanded' : ''}" id="question-${question.id}">
@@ -1122,6 +1246,8 @@ function renderQuestionCard(question) {
             <ol class="hint-list">
               ${question.hints.map((hint) => `<li>${hint}</li>`).join('')}
             </ol>
+            <p class="muted"><strong>Learn this:</strong> ${lesson.teachingFocus}</p>
+            <p class="muted"><strong>Watch for:</strong> ${lesson.commonTrap}</p>
             <p class="muted">Attempts: ${question.state.attempts}</p>
             <p class="muted">${confidenceLabel}</p>
             <div class="actions">

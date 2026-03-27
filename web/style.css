@@ -385,7 +385,8 @@ a:focus-visible {
 
 .example-card,
 .result-card,
-.stat-mini {
+.stat-mini,
+.lesson-card {
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--stroke);
@@ -394,9 +395,14 @@ a:focus-visible {
 
 .example-card h4,
 .result-card h4,
-.stat-mini h3 {
+.stat-mini h3,
+.lesson-card h4 {
   margin: 0 0 8px;
   color: #fff;
+}
+
+.lesson-card p {
+  margin: 0 0 8px;
 }
 
 .example-card pre,

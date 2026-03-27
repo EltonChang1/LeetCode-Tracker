@@ -11,6 +11,11 @@
   "leetcodeUsername": "EltonChang1",
   "curriculum": {
     "currentPhase": "Automatic",
+    "unlockRules": {
+      "baseQuestionsPerPhase": 3,
+      "questionsPerUnlockStep": 2,
+      "masteredQuestionsPerUnlock": 2
+    },
     "phasePlan": [
       {
         "id": "foundations",
