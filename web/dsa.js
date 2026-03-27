@@ -114,6 +114,13 @@ let practiceDrafts = loadPracticeDrafts();
 let currentPracticeQuestion = null;
 let latestPracticeResult = null;
 let practiceMessage = '';
+let trainingDb = {
+  owner: { name: 'Elton', role: 'Future LeetCode Master' },
+  goal: { title: 'Become a LeetCode master in DSA', focus: 'Train pattern recognition, implementation speed, and review discipline.' },
+  leetcodeUsername: 'EltonChang1',
+  curriculum: { currentPhase: '', topicSequence: [], questionSequence: [] },
+  masteryRules: { questionMasteryConfidence: 4, topicMasteryPercent: 75, reviewUrgencyDays: 2 },
+};
 
 function loadState() {
   try {
@@ -327,6 +334,24 @@ function getAllQuestions() {
   return dsaQuestions.map(questionWithState);
 }
 
+function getCurriculumQuestionOrder() {
+  const ordered = Array.isArray(trainingDb.curriculum?.questionSequence) ? trainingDb.curriculum.questionSequence : [];
+  return new Map(ordered.map((id, index) => [String(id), index]));
+}
+
+function getCurriculumTopicOrder() {
+  const ordered = Array.isArray(trainingDb.curriculum?.topicSequence) ? trainingDb.curriculum.topicSequence : [];
+  return new Map(ordered.map((topic, index) => [String(topic), index]));
+}
+
+function getCurriculumRank(question) {
+  const questionOrder = getCurriculumQuestionOrder();
+  const topicOrder = getCurriculumTopicOrder();
+  if (questionOrder.has(question.id)) return questionOrder.get(question.id);
+  if (topicOrder.has(question.topic)) return 100 + topicOrder.get(question.topic);
+  return 999;
+}
+
 function getFilters() {
   return {
     search: document.getElementById('searchInput')?.value.trim().toLowerCase() || '',
@@ -364,8 +389,9 @@ function scoreQuestion(question) {
   const dueBonus = question.review.isDue ? 55 : question.review.isSoon ? 25 : 0;
   const weakTopicBonus = getTopicHealth(question.topic, getAllQuestions()).status === 'weak' ? 20 : 0;
   const confidencePenalty = Math.max(0, 4 - Number(question.state.confidence || 0)) * 6;
+  const curriculumBoost = Math.max(0, 70 - Math.min(70, getCurriculumRank(question)));
   const rerollBonus = (hashString(`${question.id}:${rerollSeed}`) % 17);
-  return (statusBoost[question.state.status] || 0) + (difficultyBoost[question.difficulty] || 0) + staleBonus + dueBonus + weakTopicBonus + confidencePenalty + rerollBonus;
+  return (statusBoost[question.state.status] || 0) + (difficultyBoost[question.difficulty] || 0) + staleBonus + dueBonus + weakTopicBonus + confidencePenalty + curriculumBoost + rerollBonus;
 }
 
 function buildDailySet(questions) {
@@ -481,8 +507,13 @@ function getPracticeInsights(questions) {
 function buildRecommendedQueue(questions) {
   return [...questions]
     .sort((a, b) => {
+      const aDue = a.review.isDue ? 1 : 0;
+      const bDue = b.review.isDue ? 1 : 0;
+      if (aDue !== bDue) return bDue - aDue;
       const delta = scoreQuestion(b) - scoreQuestion(a);
       if (delta !== 0) return delta;
+      const curriculumDelta = getCurriculumRank(a) - getCurriculumRank(b);
+      if (curriculumDelta !== 0) return curriculumDelta;
       return a.title.localeCompare(b.title);
     })
     .slice(0, Math.max(DAILY_SET_SIZE, 4))
@@ -641,6 +672,45 @@ function renderSyncUi() {
   line.textContent = dsaSyncEnabled
     ? `DSA sync is on. Practice state writes to progress/dsa-state.json${lastSyncAt ? ` · last sync ${lastSyncAt}` : ''}.`
     : 'DSA sync is off. Practice state is stored only in this browser.';
+}
+
+function renderIdentityAndCurriculum(questions) {
+  const ownerIdentityLine = document.getElementById('ownerIdentityLine');
+  const curriculumPhaseLine = document.getElementById('curriculumPhaseLine');
+  const curriculumTopics = document.getElementById('curriculumTopics');
+  const curriculumQuestionLine = document.getElementById('curriculumQuestionLine');
+  const databaseLine = document.getElementById('databaseLine');
+  const databaseFocusLine = document.getElementById('databaseFocusLine');
+
+  if (ownerIdentityLine) {
+    ownerIdentityLine.textContent = `${trainingDb.owner?.name || 'Owner'} detected automatically · single-user mode · no sign-in required.`;
+  }
+  if (curriculumPhaseLine) {
+    curriculumPhaseLine.textContent = trainingDb.curriculum?.currentPhase || 'Foundations first, then progressively harder patterns.';
+  }
+  if (curriculumTopics) {
+    const topics = Array.isArray(trainingDb.curriculum?.topicSequence) ? trainingDb.curriculum.topicSequence : [];
+    curriculumTopics.innerHTML = topics.map((topic) => `<span class="chip">${topic}</span>`).join('');
+  }
+
+  const nextCurriculumQuestion = [...questions]
+    .filter((question) => question.state.status !== 'mastered')
+    .sort((a, b) => getCurriculumRank(a) - getCurriculumRank(b) || a.title.localeCompare(b.title))[0];
+
+  if (curriculumQuestionLine) {
+    curriculumQuestionLine.textContent = nextCurriculumQuestion
+      ? `Next teaching question: ${nextCurriculumQuestion.title} (${nextCurriculumQuestion.topic})`
+      : 'Curriculum path is clear. Keep cycling review and tougher reps.';
+  }
+
+  if (databaseLine) {
+    databaseLine.textContent = `${trainingDb.owner?.name || 'Owner'}'s training database is persisted across profile, DSA state, and browser submissions.`;
+  }
+  if (databaseFocusLine) {
+    databaseFocusLine.textContent = trainingDb.goal?.title
+      ? `${trainingDb.goal.title}${trainingDb.goal.focus ? ` — ${trainingDb.goal.focus}` : ''}`
+      : 'This tracker is tuned for long-term DSA mastery.';
+  }
 }
 
 function findRunnableQuestion(id) {
@@ -1320,6 +1390,7 @@ function render() {
   const filters = getFilters();
   updateHeroLine(questions);
   renderSyncUi();
+  renderIdentityAndCurriculum(questions);
   renderSessionPanel(questions);
   renderCoachInsights(questions);
   renderStats(questions);
@@ -1360,6 +1431,12 @@ async function bootstrap() {
     } catch (error) {
       lastSyncError = error.message;
     }
+  }
+
+  try {
+    trainingDb = await apiRequest('/api/training-db', 'GET');
+  } catch {
+    // Keep fallback training profile.
   }
 
   await refreshPracticeData();

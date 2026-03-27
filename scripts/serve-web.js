@@ -21,6 +21,7 @@ const maxBodyBytes = 64 * 1024;
 const entriesPath = path.join(rootDir, 'progress', 'entries.json');
 const rewardsStatePath = path.join(rootDir, 'progress', 'rewards-state.json');
 const dsaStatePath = path.join(rootDir, 'progress', 'dsa-state.json');
+const trainingDbPath = path.join(rootDir, 'progress', 'training-db.json');
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -218,6 +219,17 @@ const server = http.createServer((req, res) => {
 
   if (requestUrl === '/api/state' && req.method === 'GET') {
     sendJson(res, 200, { allowWrites });
+    return;
+  }
+
+  if (requestUrl === '/api/training-db' && req.method === 'GET') {
+    sendJson(res, 200, readJson(trainingDbPath, {
+      owner: { name: 'Elton', mode: 'single-user', role: 'Future LeetCode Master' },
+      goal: { title: 'Become a LeetCode master in DSA', focus: 'Train pattern recognition, implementation speed, and review discipline.' },
+      leetcodeUsername: 'EltonChang1',
+      curriculum: { currentPhase: '', topicSequence: [], questionSequence: [] },
+      masteryRules: { questionMasteryConfidence: 4, topicMasteryPercent: 75, reviewUrgencyDays: 2 },
+    }));
     return;
   }
 

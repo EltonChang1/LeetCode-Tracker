@@ -25,11 +25,20 @@
 
       <section>
         <article class="card">
-          <h2>🔄 Sync Mode</h2>
+          <h2 id="ownerHeading">Welcome Back</h2>
+          <p id="ownerLine" class="muted">Single-user mode is loading your training profile.</p>
+          <p id="goalLine" class="muted">Building your custom LeetCode mastery route...</p>
+        </article>
+      </section>
+
+      <section>
+        <article class="card">
+          <h2>🔄 Your Linked Profile</h2>
           <div class="actions">
             <input id="leetcodeUsernameInput" class="text-input" type="text" placeholder="LeetCode username" />
             <button id="leetcodeSyncBtn" class="btn small">Sync from LeetCode</button>
           </div>
+          <p id="identityLine" class="muted">No sign-in required. This site is customized for one owner only.</p>
           <label class="sync-row">
             <input id="leetcodeBootstrapToggle" type="checkbox" />
             <span>Use bootstrap mode when recent submission history is hidden</span>

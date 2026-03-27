@@ -1,0 +1,48 @@
+{
+  "owner": {
+    "name": "Elton",
+    "mode": "single-user",
+    "role": "Future LeetCode Master"
+  },
+  "goal": {
+    "title": "Become a LeetCode master in DSA",
+    "focus": "Train pattern recognition, implementation speed, and review discipline."
+  },
+  "leetcodeUsername": "EltonChang1",
+  "curriculum": {
+    "currentPhase": "Foundations -> Sliding Window -> Stacks -> Trees/Graphs",
+    "topicSequence": [
+      "Arrays",
+      "Two Pointers",
+      "Sliding Window",
+      "Linked Lists",
+      "Stacks",
+      "Trees",
+      "Graphs",
+      "Heaps",
+      "Dynamic Programming"
+    ],
+    "questionSequence": [
+      "two-sum",
+      "merge-sorted-array",
+      "backspace-string-compare",
+      "valid-parentheses",
+      "longest-substring-without-repeating-characters",
+      "find-all-anagrams-in-a-string",
+      "minimum-size-subarray-sum",
+      "daily-temperatures",
+      "largest-rectangle-in-histogram",
+      "binary-tree-level-order-traversal-ii",
+      "same-tree",
+      "number-of-islands",
+      "course-schedule-ii",
+      "k-closest-points-to-origin",
+      "constrained-subsequence-sum"
+    ]
+  },
+  "masteryRules": {
+    "questionMasteryConfidence": 4,
+    "topicMasteryPercent": 75,
+    "reviewUrgencyDays": 2
+  }
+}

@@ -325,7 +325,7 @@ function calcStats(entries) {
 }
 
 async function loadData() {
-  const [entriesRes, profileRes, bossesRes, leagueRes, raidRes, rewardsRes, rewardsStateRes] = await Promise.all([
+  const [entriesRes, profileRes, bossesRes, leagueRes, raidRes, rewardsRes, rewardsStateRes, trainingDbRes] = await Promise.all([
     fetch(`/progress/entries.json?ts=${Date.now()}`),
     fetch(`/progress/profile.json?ts=${Date.now()}`),
     fetch(`/progress/bosses.json?ts=${Date.now()}`),
@@ -333,6 +333,7 @@ async function loadData() {
     fetch(`/progress/raid-bosses.json?ts=${Date.now()}`),
     fetch(`/progress/rewards.json?ts=${Date.now()}`),
     fetch(`/progress/rewards-state.json?ts=${Date.now()}`),
+    fetch(`/api/training-db?ts=${Date.now()}`),
   ]);
 
   const entries = entriesRes.ok ? await entriesRes.json() : [];
@@ -342,9 +343,16 @@ async function loadData() {
   const raidBosses = raidRes.ok ? await raidRes.json() : fallbackRaidBosses;
   const rewardsConfig = rewardsRes.ok ? await rewardsRes.json() : fallbackRewardsConfig;
   const rewardsState = rewardsStateRes.ok ? await rewardsStateRes.json() : fallbackRewardsState;
+  const trainingDb = trainingDbRes.ok ? await trainingDbRes.json() : {
+    owner: { name: profile.ownerName || 'Elton', role: 'Future LeetCode Master' },
+    goal: { title: 'Become a LeetCode master in DSA', focus: 'Train pattern recognition, implementation speed, and review discipline.' },
+    leetcodeUsername: profile.leetcodeUsername || '',
+    curriculum: { currentPhase: '', topicSequence: [] },
+  };
   return {
     entries: Array.isArray(entries) ? entries : [],
     profile,
+    trainingDb,
     bosses: Array.isArray(bosses) && bosses.length ? bosses : fallbackBosses,
     league: league && typeof league === 'object' ? league : fallbackLeagueConfig,
     raidBosses: Array.isArray(raidBosses) && raidBosses.length ? raidBosses : fallbackRaidBosses,
@@ -684,7 +692,7 @@ function nudge(stats) {
   return 'Tiny start wins: open one problem and code for 2 minutes.';
 }
 
-function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewardsConfig, rewardsState, interactive) {
+function render(stats, profile, trainingDb, entries, bosses, leagueConfig, raidBosses, rewardsConfig, rewardsState, interactive) {
   document.getElementById('todayLine').textContent = `Today: ${todayKey()} · ${stats.todayCount} solve(s)`;
   document.getElementById('currentStreak').textContent = `${stats.currentStreak}d`;
   document.getElementById('longestStreak').textContent = `${stats.longestStreak}d`;
@@ -703,6 +711,20 @@ function render(stats, profile, entries, bosses, leagueConfig, raidBosses, rewar
     practiceBridgeLine.textContent = stats.todayCount > 0
       ? 'Jump back into the guided DSA board to finish review or push one more focused solve.'
       : 'Start the mission in the DSA board and we will queue the best first problem for you.';
+  }
+  const ownerHeading = document.getElementById('ownerHeading');
+  const ownerLine = document.getElementById('ownerLine');
+  const goalLine = document.getElementById('goalLine');
+  const identityLine = document.getElementById('identityLine');
+  if (ownerHeading) ownerHeading.textContent = `${trainingDb.owner?.name || profile.ownerName || 'Owner'}'s Tracker`;
+  if (ownerLine) ownerLine.textContent = `${trainingDb.owner?.role || 'Future LeetCode Master'} · single-user mode · no sign-in required.`;
+  if (goalLine) {
+    goalLine.textContent = trainingDb.goal?.title
+      ? `${trainingDb.goal.title}${trainingDb.goal.focus ? ` — ${trainingDb.goal.focus}` : ''}`
+      : 'Your board is focused on turning you into a stronger DSA problem solver.';
+  }
+  if (identityLine) {
+    identityLine.textContent = `This website assumes one owner only${trainingDb.leetcodeUsername ? ` and is linked to @${trainingDb.leetcodeUsername}` : ''}.`;
   }
 
   const achievements = document.getElementById('achievements');
@@ -1022,6 +1044,7 @@ async function refreshBoard(reloadBase = false) {
     render(
       stats,
       baseData.profile,
+      baseData.trainingDb,
       entries,
       baseData.bosses,
       baseData.league,
@@ -1035,7 +1058,7 @@ async function refreshBoard(reloadBase = false) {
 
     const usernameInput = document.getElementById('leetcodeUsernameInput');
     if (usernameInput && !usernameInput.value) {
-      usernameInput.value = loadLeetCodeUsername();
+      usernameInput.value = loadLeetCodeUsername() || baseData.trainingDb.leetcodeUsername || baseData.profile.leetcodeUsername || '';
     }
 
     bindButton('missionCompleteBtn', async () => {

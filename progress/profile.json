@@ -1,4 +1,7 @@
 {
+  "ownerName": "Elton",
+  "leetcodeUsername": "EltonChang1",
+  "singleUserMode": true,
   "dailyMinimum": 1,
   "targetMinutes": 20,
   "preferredWarmupDifficulty": "easy",
