@@ -4,6 +4,7 @@
     "title": "Two Sum",
     "slug": "two-sum",
     "difficulty": "easy",
+    "topic": "Arrays",
     "functionName": "twoSum",
     "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
     "examples": [
@@ -39,6 +40,7 @@
     "title": "Valid Parentheses",
     "slug": "valid-parentheses",
     "difficulty": "easy",
+    "topic": "Stacks",
     "functionName": "isValid",
     "description": "Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.",
     "examples": [
@@ -79,6 +81,7 @@
     "title": "Backspace String Compare",
     "slug": "backspace-string-compare",
     "difficulty": "easy",
+    "topic": "Two Pointers",
     "functionName": "backspaceCompare",
     "description": "Given two strings s and t, return true if they are equal when both are typed into empty text editors and '#' means a backspace character.",
     "examples": [
@@ -114,6 +117,7 @@
     "title": "Rank Transform of an Array",
     "slug": "rank-transform-of-an-array",
     "difficulty": "easy",
+    "topic": "Arrays",
     "functionName": "arrayRankTransform",
     "description": "Given an array of integers arr, replace each element with its rank when the array is sorted. The rank starts at 1 and equal values share the same rank.",
     "examples": [
@@ -149,6 +153,7 @@
     "title": "Daily Temperatures",
     "slug": "daily-temperatures",
     "difficulty": "medium",
+    "topic": "Stacks",
     "functionName": "dailyTemperatures",
     "description": "Given an array of daily temperatures, return an array answer such that answer[i] is the number of days until a warmer temperature. If there is no future day for which this is possible, keep 0.",
     "examples": [

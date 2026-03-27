@@ -208,6 +208,119 @@ function sanitizeDsaState(payload) {
   return result;
 }
 
+function calculateDayDelta(fromDateKey, toDateKey) {
+  if (!fromDateKey || !toDateKey) return 0;
+  const from = new Date(`${fromDateKey}T00:00:00`);
+  const to = new Date(`${toDateKey}T00:00:00`);
+  return Math.round((to - from) / 86400000);
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildTrainingSnapshot(trainingDb) {
+  const questions = filterQuestions({});
+  const dsaState = readJson(dsaStatePath, {});
+  const submissions = loadQuestionSubmissions();
+  const masteryRules = trainingDb.masteryRules || {};
+  const requiredConfidence = Number(masteryRules.questionMasteryConfidence || 4);
+  const topicMasteryPercent = Number(masteryRules.topicMasteryPercent || 75);
+  const reviewUrgencyDays = Number(masteryRules.reviewUrgencyDays || 2);
+  const topicSequence = Array.isArray(trainingDb.curriculum?.topicSequence) ? trainingDb.curriculum.topicSequence : [];
+  const phasePlan = Array.isArray(trainingDb.curriculum?.phasePlan) ? trainingDb.curriculum.phasePlan : [];
+
+  const questionStats = new Map();
+  submissions.forEach((submission) => {
+    const slug = String(submission.questionSlug || '');
+    if (!slug) return;
+    const current = questionStats.get(slug) || { attempts: 0, passes: 0, latest: null };
+    current.attempts += 1;
+    if (submission.passedAll) current.passes += 1;
+    if (!current.latest) current.latest = submission;
+    questionStats.set(slug, current);
+  });
+
+  const topicStats = new Map();
+  questions.forEach((question) => {
+    const state = dsaState[question.slug] || {};
+    const submission = questionStats.get(question.slug) || { attempts: 0, passes: 0, latest: null };
+    const topic = question.topic || 'Unknown';
+    const current = topicStats.get(topic) || {
+      total: 0,
+      mastered: 0,
+      solved: 0,
+      dueReview: 0,
+      attempts: 0,
+      recentPasses: 0,
+    };
+
+    current.total += 1;
+    current.attempts += submission.attempts;
+    current.recentPasses += submission.passes;
+
+    const confidence = Number(state.confidence || 0);
+    const status = String(state.status || 'not-started');
+    const nextReviewAt = String(state.nextReviewAt || '');
+    const reviewIsDue = nextReviewAt && calculateDayDelta(nextReviewAt, todayKey()) >= -reviewUrgencyDays;
+
+    if (status === 'solved' || status === 'mastered') current.solved += 1;
+    if (status === 'mastered' || (status === 'solved' && confidence >= requiredConfidence && submission.passes > 0)) {
+      current.mastered += 1;
+    }
+    if (reviewIsDue && status !== 'mastered') current.dueReview += 1;
+
+    topicStats.set(topic, current);
+  });
+
+  const orderedTopics = topicSequence.length ? topicSequence : [...topicStats.keys()];
+  const topics = orderedTopics.map((topic) => {
+    const stat = topicStats.get(topic) || { total: 0, mastered: 0, solved: 0, dueReview: 0, attempts: 0, recentPasses: 0 };
+    const masteryPercent = stat.total ? Math.round((stat.mastered / stat.total) * 100) : 0;
+    return {
+      topic,
+      ...stat,
+      masteryPercent,
+      readyToAdvance: stat.total > 0 && masteryPercent >= topicMasteryPercent && stat.dueReview === 0,
+    };
+  });
+
+  let activePhase = phasePlan[phasePlan.length - 1] || { id: 'mastery-loop', label: 'Mastery Loop', topics: [] };
+  let nextPhase = null;
+  const blockers = [];
+
+  for (let index = 0; index < phasePlan.length; index += 1) {
+    const phase = phasePlan[index];
+    const phaseTopics = topics.filter((item) => phase.topics.includes(item.topic) && item.total > 0);
+    const phaseReady = phaseTopics.length > 0 && phaseTopics.every((item) => item.readyToAdvance);
+    if (!phaseReady) {
+      activePhase = phase;
+      nextPhase = phasePlan[index + 1] || null;
+      phaseTopics.forEach((item) => {
+        if (!item.readyToAdvance) {
+          blockers.push(
+            item.dueReview > 0
+              ? `${item.topic} has ${item.dueReview} review item(s) due`
+              : `${item.topic} is at ${item.masteryPercent}% mastery`
+          );
+        }
+      });
+      break;
+    }
+  }
+
+  return {
+    ...trainingDb,
+    derived: {
+      activePhaseId: activePhase.id,
+      activePhaseLabel: activePhase.label,
+      nextPhaseLabel: nextPhase ? nextPhase.label : 'Mastery Loop',
+      blockers: blockers.slice(0, 4),
+      topics,
+    },
+  };
+}
+
 function resolvePath(urlPath) {
   if (urlPath === '/') return path.join(rootDir, 'web', 'index.html');
   const normalized = path.normalize(urlPath).replace(/^\/+/, '');
@@ -223,13 +336,14 @@ const server = http.createServer((req, res) => {
   }
 
   if (requestUrl === '/api/training-db' && req.method === 'GET') {
-    sendJson(res, 200, readJson(trainingDbPath, {
+    const trainingDb = readJson(trainingDbPath, {
       owner: { name: 'Elton', mode: 'single-user', role: 'Future LeetCode Master' },
       goal: { title: 'Become a LeetCode master in DSA', focus: 'Train pattern recognition, implementation speed, and review discipline.' },
       leetcodeUsername: 'EltonChang1',
-      curriculum: { currentPhase: '', topicSequence: [], questionSequence: [] },
+      curriculum: { currentPhase: '', phasePlan: [], topicSequence: [], questionSequence: [] },
       masteryRules: { questionMasteryConfidence: 4, topicMasteryPercent: 75, reviewUrgencyDays: 2 },
-    }));
+    });
+    sendJson(res, 200, buildTrainingSnapshot(trainingDb));
     return;
   }
 

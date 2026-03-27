@@ -10,7 +10,29 @@
   },
   "leetcodeUsername": "EltonChang1",
   "curriculum": {
-    "currentPhase": "Foundations -> Sliding Window -> Stacks -> Trees/Graphs",
+    "currentPhase": "Automatic",
+    "phasePlan": [
+      {
+        "id": "foundations",
+        "label": "Foundations",
+        "topics": ["Arrays", "Two Pointers", "Linked Lists"]
+      },
+      {
+        "id": "window-and-stack",
+        "label": "Sliding Window and Stacks",
+        "topics": ["Sliding Window", "Stacks"]
+      },
+      {
+        "id": "trees-and-graphs",
+        "label": "Trees and Graphs",
+        "topics": ["Trees", "Graphs"]
+      },
+      {
+        "id": "advanced-patterns",
+        "label": "Advanced Patterns",
+        "topics": ["Heaps", "Dynamic Programming"]
+      }
+    ],
     "topicSequence": [
       "Arrays",
       "Two Pointers",

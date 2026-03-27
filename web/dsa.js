@@ -348,6 +348,7 @@ function getCurriculumRank(question) {
   const questionOrder = getCurriculumQuestionOrder();
   const topicOrder = getCurriculumTopicOrder();
   if (questionOrder.has(question.id)) return questionOrder.get(question.id);
+  if (questionOrder.has(question.slug)) return questionOrder.get(question.slug);
   if (topicOrder.has(question.topic)) return 100 + topicOrder.get(question.topic);
   return 999;
 }
@@ -679,6 +680,7 @@ function renderIdentityAndCurriculum(questions) {
   const curriculumPhaseLine = document.getElementById('curriculumPhaseLine');
   const curriculumTopics = document.getElementById('curriculumTopics');
   const curriculumQuestionLine = document.getElementById('curriculumQuestionLine');
+  const curriculumBlockersLine = document.getElementById('curriculumBlockersLine');
   const databaseLine = document.getElementById('databaseLine');
   const databaseFocusLine = document.getElementById('databaseFocusLine');
 
@@ -686,11 +688,20 @@ function renderIdentityAndCurriculum(questions) {
     ownerIdentityLine.textContent = `${trainingDb.owner?.name || 'Owner'} detected automatically · single-user mode · no sign-in required.`;
   }
   if (curriculumPhaseLine) {
-    curriculumPhaseLine.textContent = trainingDb.curriculum?.currentPhase || 'Foundations first, then progressively harder patterns.';
+    curriculumPhaseLine.textContent = trainingDb.derived?.activePhaseLabel
+      ? `Current phase: ${trainingDb.derived.activePhaseLabel}${trainingDb.derived.nextPhaseLabel ? ` · next: ${trainingDb.derived.nextPhaseLabel}` : ''}`
+      : trainingDb.curriculum?.currentPhase || 'Foundations first, then progressively harder patterns.';
   }
   if (curriculumTopics) {
-    const topics = Array.isArray(trainingDb.curriculum?.topicSequence) ? trainingDb.curriculum.topicSequence : [];
-    curriculumTopics.innerHTML = topics.map((topic) => `<span class="chip">${topic}</span>`).join('');
+    const topics = Array.isArray(trainingDb.derived?.topics) && trainingDb.derived.topics.length
+      ? trainingDb.derived.topics
+      : (Array.isArray(trainingDb.curriculum?.topicSequence) ? trainingDb.curriculum.topicSequence.map((topic) => ({ topic })) : []);
+    curriculumTopics.innerHTML = topics.map((item) => {
+      const topic = typeof item === 'string' ? item : item.topic;
+      const ready = typeof item === 'object' && item.readyToAdvance;
+      const mastery = typeof item === 'object' && Number.isFinite(item.masteryPercent) ? ` ${item.masteryPercent}%` : '';
+      return `<span class="chip ${ready ? 'tier-on' : ''}">${topic}${mastery}</span>`;
+    }).join('');
   }
 
   const nextCurriculumQuestion = [...questions]
@@ -701,6 +712,12 @@ function renderIdentityAndCurriculum(questions) {
     curriculumQuestionLine.textContent = nextCurriculumQuestion
       ? `Next teaching question: ${nextCurriculumQuestion.title} (${nextCurriculumQuestion.topic})`
       : 'Curriculum path is clear. Keep cycling review and tougher reps.';
+  }
+  if (curriculumBlockersLine) {
+    const blockers = Array.isArray(trainingDb.derived?.blockers) ? trainingDb.derived.blockers : [];
+    curriculumBlockersLine.textContent = blockers.length
+      ? `To unlock the next phase: ${blockers.join(' · ')}`
+      : 'All topics in this phase are healthy enough to advance when you are ready.';
   }
 
   if (databaseLine) {
