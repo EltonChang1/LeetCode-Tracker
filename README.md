@@ -2,6 +2,45 @@
 
 A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workflow.
 
+## What This Repo Is
+
+This repo is a local LeetCode/DSA practice system with two main parts:
+- a Node.js CLI for logging solved problems and updating progress data
+- a lightweight web dashboard for streaks, missions, rewards, leagues, raids, and DSA practice
+
+It is designed to make daily problem solving easier to sustain, not just to store solutions.
+
+## Requirements
+
+- Node.js 18+ and npm
+- Git
+- A GitHub repo connected as `origin` if you want to use the daily push workflow
+- Optional: a public LeetCode profile if you want to use profile sync
+
+## Installation
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/EltonChang1/LeetCode-Tracker.git
+cd LeetCode-Tracker
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Optional: connect your own GitHub repo
+
+If you are using this as your own tracker, point `origin` to your repo:
+
+```bash
+git remote remove origin
+git remote add origin <your-repo-url>
+```
+
 ## Features
 - ✅ Log solved problems from terminal with one command
 - 🔥 Auto-calculate your daily streak and longest streak
@@ -24,24 +63,96 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - 🚀 One-command daily commit + push workflow
 
 ## Quick Start
-1. Open this folder in VS Code.
-2. Initialize GitHub repo (if not done):
-   - `git init`
-   - `git remote add origin <your-repo-url>`
+1. Open this folder in VS Code or your terminal.
+2. Install packages with `npm install`.
 3. Run your first log command:
    - `npm run lc:add -- --id 1 --title "Two Sum" --difficulty easy --lang js --tags array,hash-table --time 15`
-4. Check progress:
-   - `npm run lc:today`
-   - `npm run lc:mission`
-   - `npm run lc:boss`
-   - `npm run lc:league`
-   - `npm run lc:raid`
-   - `npm run lc:chest -- --open`
+4. Regenerate your dashboard:
    - `npm run lc:dashboard`
-   - `npm run lc:web` then open `http://localhost:4321`
-5. Daily update to GitHub:
+5. Start the web app:
+   - `npm run lc:web`
+   - then open `http://localhost:4321`
+6. Push your daily update:
    - `npm run lc:push`
    - or custom message: `npm run lc:push -- "leetcode day 12"`
+
+## How To Use
+
+### Log a solved problem
+
+```bash
+npm run lc:add -- \
+  --id 42 \
+  --title "Trapping Rain Water" \
+  --difficulty hard \
+  --lang js \
+  --tags array,two-pointers,stack \
+  --time 35 \
+  --url "https://leetcode.com/problems/trapping-rain-water/" \
+  --notes "Two-pointer optimization"
+```
+
+This command updates your progress data and creates a dated solution file under `problems/YYYY/MM/DD/`.
+
+### Check today’s progress
+
+```bash
+npm run lc:today
+npm run lc:mission
+```
+
+Use these to see your current streak state and the low-friction daily mission prompt.
+
+### View generated dashboard data
+
+```bash
+npm run lc:dashboard
+```
+
+This regenerates `DASHBOARD.md` from the JSON data in `progress/`.
+
+### Run the local web dashboard
+
+```bash
+npm run lc:web
+```
+
+Open `http://localhost:4321` to use:
+- the main gamified dashboard
+- the DSA practice board
+- recent progress and reward systems
+
+### Enable web write-back mode
+
+```bash
+npm run lc:web:write
+```
+
+This starts the same local app with file write-back enabled for supported actions.
+
+### Sync from your LeetCode profile
+
+```bash
+npm run lc:sync -- --username your_leetcode_name --limit 25
+```
+
+If recent history is hidden on your profile, try:
+
+```bash
+npm run lc:sync -- --username your_leetcode_name --limit 25 --bootstrap
+```
+
+### Push your daily activity to GitHub
+
+```bash
+npm run lc:push
+```
+
+Or with a custom commit message:
+
+```bash
+npm run lc:push -- "leetcode day 12"
+```
 
 ## Daily Routine (5-minute flow)
 1. Run `npm run lc:mission` and do only the tiny mission.
@@ -83,18 +194,26 @@ A friendly, gamified LeetCode practice setup for VS Code with daily GitHub workf
 - Weekend event controls are in `rewards.json > weekendEvent`
 - Midweek raid combo event controls are in `rewards.json > midweekEvent`
 
-## Add Entry Command
-```bash
-npm run lc:add -- \
-  --id 42 \
-  --title "Trapping Rain Water" \
-  --difficulty hard \
-  --lang js \
-  --tags array,two-pointers,stack \
-  --time 35 \
-  --url "https://leetcode.com/problems/trapping-rain-water/" \
-  --notes "Two-pointer optimization"
-```
+## Web Write-Back API (Optional)
+- The web dashboard can stay in simulation mode (default) or sync interactions to real files.
+- Start with safe write API enabled: `npm run lc:web:write`.
+- In dashboard, enter your username and click **Sync from LeetCode**.
+- Enable **Sync Mode** toggle for interactive button actions writing to disk.
+- Synced actions write to:
+   - `progress/entries.json` (solve interactions)
+   - `progress/rewards-state.json` (chest claims)
+- Safety guards:
+   - Writes are disabled unless `LCQ_ALLOW_WRITE=1`.
+   - Payload size limit + strict schema validation on server.
+   - Duplicate entry and duplicate daily chest claim checks.
+
+## LeetCode Profile Sync
+- `lc:sync` imports your recent **Accepted** submissions directly from LeetCode into `progress/entries.json`.
+- Example: `npm run lc:sync -- --username your_leetcode_name --limit 25`
+- Optional bootstrap mode: `npm run lc:sync -- --username your_leetcode_name --limit 25 --bootstrap`
+- Difficulty/tags are resolved per problem; duplicates are skipped automatically.
+- When recent submission history is hidden but profile counts are visible, bootstrap mode imports aggregate Easy/Medium/Hard counts as historical synthetic entries.
+- This uses LeetCode's GraphQL endpoint (community/undocumented API surface), so schema/rate-limit behavior may change over time.
 
 ## Structure
 - `progress/entries.json`: source of truth for your solved history
