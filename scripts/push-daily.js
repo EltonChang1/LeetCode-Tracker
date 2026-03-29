@@ -53,10 +53,10 @@ try {
   runInherit(`git commit -m "${message.replace(/"/g, '\\"')}"`);
   runInherit('git push');
   const solutionsResult = commitAndPushSolutionsRepo(message);
-  if (solutionsResult.reason) {
-    console.log(`🗂️ Solutions repo: ${solutionsResult.reason}`);
-  } else if (solutionsResult.pushed) {
+  if (solutionsResult.pushed) {
     console.log('🗂️ Solutions repo pushed too.');
+  } else if (solutionsResult.reason) {
+    console.log(`⚠️ ${solutionsResult.reason}`);
   }
   console.log('🚀 Daily update pushed. Keep the streak alive!');
 } catch (error) {

@@ -3,6 +3,7 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const {
+  commitAndPushSolutionsRepo,
   loadConfig,
   saveConfig,
   syncSolutionsRepo,
@@ -88,19 +89,27 @@ function main() {
       console.log('⚠️ GitHub CLI is not authenticated, so the remote repo could not be created automatically.');
       console.log('   Run `gh auth login` and then rerun this command with `--create`.');
     } else if (!remoteExists(owner, repoName)) {
-      runInherit(`gh repo create ${owner}/${repoName} --public --confirm`);
+      runInherit(`printf 'y\\n' | gh repo create ${owner}/${repoName} --public`, trackerRootDir);
     }
   }
 
   nextConfig.remoteUrl = remoteUrl;
   saveConfig(nextConfig);
   const syncResult = syncSolutionsRepo([]);
+  const pushResult = wantCreate && ghAuthenticated()
+    ? commitAndPushSolutionsRepo('chore: initialize local solutions mirror repo')
+    : null;
 
   console.log(`✅ Solutions repo configured at ${syncResult.config.localRepoPath}`);
   if (syncResult.config.remoteUrl) {
     console.log(`🔗 Remote target: ${syncResult.config.remoteUrl}`);
   } else {
     console.log('🔗 No remote configured yet.');
+  }
+  if (pushResult && pushResult.pushed) {
+    console.log('🚀 Initial solutions repo commit pushed.');
+  } else if (pushResult && pushResult.reason) {
+    console.log(`⚠️ ${pushResult.reason}`);
   }
 }
 

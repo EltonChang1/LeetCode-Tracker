@@ -171,27 +171,36 @@ function commitAndPushSolutionsRepo(message) {
     return { skipped: true, reason: 'Solutions repo sync is disabled.' };
   }
 
-  ensureGitRepo(config.localRepoPath, config.branch);
-  ensureRepoScaffold(config.localRepoPath);
-  setRemoteIfNeeded(config);
+  try {
+    ensureGitRepo(config.localRepoPath, config.branch);
+    ensureRepoScaffold(config.localRepoPath);
+    setRemoteIfNeeded(config);
 
-  runInherit('git add .', config.localRepoPath);
-  if (!hasWorkingTreeChanges(config.localRepoPath)) {
-    return { skipped: true, reason: 'No solutions repo changes to commit.' };
+    runInherit('git add .', config.localRepoPath);
+    if (!hasWorkingTreeChanges(config.localRepoPath)) {
+      return { skipped: true, reason: 'No solutions repo changes to commit.' };
+    }
+
+    runInherit(`git commit -m "${String(message || 'leetcode solutions update').replace(/"/g, '\\"')}"`, config.localRepoPath);
+
+    if (!config.autoPush) {
+      return { skipped: false, pushed: false, repoPath: config.localRepoPath };
+    }
+
+    if (!config.remoteUrl) {
+      return { skipped: false, pushed: false, repoPath: config.localRepoPath, reason: 'No remote URL configured.' };
+    }
+
+    runInherit(`git push ${config.remoteName} ${config.branch}`, config.localRepoPath);
+    return { skipped: false, pushed: true, repoPath: config.localRepoPath };
+  } catch (error) {
+    return {
+      skipped: false,
+      pushed: false,
+      repoPath: config.localRepoPath,
+      reason: `Solutions repo push failed: ${error.message || String(error)}`,
+    };
   }
-
-  runInherit(`git commit -m "${String(message || 'leetcode solutions update').replace(/"/g, '\\"')}"`, config.localRepoPath);
-
-  if (!config.autoPush) {
-    return { skipped: false, pushed: false, repoPath: config.localRepoPath };
-  }
-
-  if (!config.remoteUrl) {
-    return { skipped: false, pushed: false, repoPath: config.localRepoPath, reason: 'No remote URL configured.' };
-  }
-
-  runInherit(`git push ${config.remoteName} ${config.branch}`, config.localRepoPath);
-  return { skipped: false, pushed: true, repoPath: config.localRepoPath };
 }
 
 module.exports = {
