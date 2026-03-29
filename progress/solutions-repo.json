@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "localRepoPath": "../LeetCode-Solutions",
+  "branch": "main",
+  "remoteName": "origin",
+  "remoteUrl": "https://github.com/EltonChang1/LeetCode-Solutions.git",
+  "solutionsRoot": "problems",
+  "autoPush": true
+}

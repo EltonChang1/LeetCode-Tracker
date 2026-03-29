@@ -2,6 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const { syncLeetCodeEntries } = require('./leetcode-sync');
+const { syncSolutionsRepo } = require('./solutions-repo');
 
 const rootDir = path.resolve(__dirname, '..');
 const entriesPath = path.join(rootDir, 'progress', 'entries.json');
@@ -681,6 +683,54 @@ function getMidweekMomentumEvent(rewardConfig, dateObj = toDate(getToday())) {
   };
 }
 
+function getDayName(dayIndex) {
+  const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return names[dayIndex] || 'Unknown';
+}
+
+function getEventSchedule(eventConfig, fallbackDays, dateObj = toDate(getToday())) {
+  const event = eventConfig || {};
+  const rawDays = Array.isArray(event.days) && event.days.length ? event.days : fallbackDays;
+  const days = rawDays
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+
+  const enabled = Boolean(event.enabled);
+  if (!enabled || !days.length) {
+    return {
+      active: false,
+      enabled,
+      nextDayLabel: 'disabled',
+    };
+  }
+
+  const today = dateObj.getDay();
+  if (days.includes(today)) {
+    return {
+      active: true,
+      enabled,
+      nextDayLabel: `Today (${getDayName(today)})`,
+    };
+  }
+
+  for (let offset = 1; offset <= 7; offset += 1) {
+    const candidate = (today + offset) % 7;
+    if (days.includes(candidate)) {
+      return {
+        active: false,
+        enabled,
+        nextDayLabel: getDayName(candidate),
+      };
+    }
+  }
+
+  return {
+    active: false,
+    enabled,
+    nextDayLabel: 'unknown',
+  };
+}
+
 function getBoostedWeights(weights, event) {
   const source = {
     ...weights,
@@ -1212,11 +1262,15 @@ function addEntry(args) {
 
   entries.push(entry);
   writeEntries(entries);
+  const solutionsSync = syncSolutionsRepo(entries);
   const stats = renderDashboard(entries);
   const bossStatus = getBossProgress(entries);
 
   console.log(`✅ Logged #${entry.id} ${entry.title} (${formatDifficulty(entry.difficulty)})`);
   console.log(`📁 Solution file: ${entry.solutionPath}`);
+  if (solutionsSync.repoReady) {
+    console.log(`🗂️ Mirrored into solutions repo: ${solutionsSync.config.localRepoPath}`);
+  }
   console.log(`🔥 Current streak: ${stats.currentStreak} day(s)`);
   console.log(`✨ Win streak multiplier: x${stats.streakBonus.multiplier} [${stats.streakBonus.intensity}]`);
   if (stats.luckyEvent.active) {
@@ -1406,7 +1460,64 @@ function showChest(entries, args) {
   console.log('- Open with: npm run lc:chest -- --open');
 }
 
-function main() {
+function showEvents() {
+  const rewardsConfig = readRewardsConfig();
+  const today = toDate(getToday());
+
+  const weekend = rewardsConfig.weekendEvent || rewardDefaults.weekendEvent;
+  const weekendSchedule = getEventSchedule(weekend, [0, 6], today);
+
+  const midweek = rewardsConfig.midweekEvent || rewardDefaults.midweekEvent;
+  const midweekSchedule = getEventSchedule(midweek, [2, 3, 4], today);
+
+  console.log('📅 Event Status');
+  console.log(`- ${weekend.name || 'Lucky Streak Weekend'}: ${weekendSchedule.active ? 'ACTIVE' : 'inactive'} | next activation: ${weekendSchedule.nextDayLabel}`);
+  console.log(`- ${midweek.name || 'Midweek Momentum'}: ${midweekSchedule.active ? 'ACTIVE' : 'inactive'} | next activation: ${midweekSchedule.nextDayLabel}`);
+}
+
+async function syncFromLeetCode(args) {
+  const username = String(args.username || args.user || '').trim();
+  const limit = Number(args.limit || 20);
+  const bootstrapMode = Boolean(args.bootstrap || args.aggregate || args.fallback);
+
+  if (!username) {
+    throw new Error('Missing --username. Example: npm run lc:sync -- --username your_leetcode_name --limit 20');
+  }
+
+  const entries = readEntries();
+  const result = await syncLeetCodeEntries({
+    username,
+    limit,
+    existingEntries: entries,
+    bootstrapMode,
+  });
+
+  if (!result.imported.length) {
+    console.log(`ℹ️ No new accepted submissions to import for @${result.username}.`);
+    console.log(`Checked ${result.fetchedAccepted} recent accepted submissions.`);
+    if (result.visibilityLimited) {
+      console.log(`⚠️ Profile visibility note: accepted solves exist (local=${result.localAccepted}, global=${result.globalAccepted}) but recent submissions are not exposed publicly.`);
+      console.log('   LeetCode may hide recent submission history on public profiles, so per-problem auto-import is unavailable without visible recent submissions.');
+      if (!bootstrapMode) {
+        console.log('   Tip: rerun with --bootstrap to import aggregate Easy/Medium/Hard counts as historical bootstrap entries.');
+      }
+    }
+    return;
+  }
+
+  entries.push(...result.imported);
+  writeEntries(entries);
+  const stats = renderDashboard(entries);
+
+  console.log(`✅ Imported ${result.imported.length} new solve(s) from @${result.username}.`);
+  console.log(`📥 Checked ${result.fetchedAccepted} recent accepted submission(s).`);
+  if (result.bootstrapImportedCount > 0) {
+    console.log(`🧱 Bootstrap imported: ${result.bootstrapImportedCount} aggregate entry(ies) (difficulty counts only).`);
+  }
+  console.log(`📊 Total solved now: ${stats.total} | Current streak: ${stats.currentStreak}`);
+}
+
+async function main() {
   const command = process.argv[2];
   const args = parseArgs(process.argv.slice(3));
 
@@ -1454,6 +1565,16 @@ function main() {
       return;
     }
 
+    if (command === 'events') {
+      showEvents();
+      return;
+    }
+
+    if (command === 'sync') {
+      await syncFromLeetCode(args);
+      return;
+    }
+
     console.log('Usage:');
     console.log('  npm run lc:add -- --id 1 --title "Two Sum" --difficulty easy --lang js --tags array,hash --time 15');
     console.log('  npm run lc:today');
@@ -1463,6 +1584,8 @@ function main() {
     console.log('  npm run lc:league');
     console.log('  npm run lc:raid');
     console.log('  npm run lc:chest -- --open');
+    console.log('  npm run lc:events');
+    console.log('  npm run lc:sync -- --username your_leetcode_name --limit 20 [--bootstrap]');
   } catch (error) {
     console.error(`❌ ${error.message}`);
     process.exit(1);

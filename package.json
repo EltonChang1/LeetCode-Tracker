@@ -13,7 +13,11 @@
     "lc:league": "node scripts/track.js league",
     "lc:raid": "node scripts/track.js raid",
     "lc:chest": "node scripts/track.js chest",
+    "lc:events": "node scripts/track.js events",
+    "lc:sync": "node scripts/track.js sync",
     "lc:web": "node scripts/serve-web.js",
-    "lc:push": "node scripts/push-daily.js"
+    "lc:web:write": "LCQ_ALLOW_WRITE=1 node scripts/serve-web.js",
+    "lc:push": "node scripts/push-daily.js",
+    "lc:solutions:setup": "node scripts/setup-solutions-repo.js"
   }
 }
