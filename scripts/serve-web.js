@@ -22,6 +22,7 @@ const entriesPath = path.join(rootDir, 'progress', 'entries.json');
 const rewardsStatePath = path.join(rootDir, 'progress', 'rewards-state.json');
 const dsaStatePath = path.join(rootDir, 'progress', 'dsa-state.json');
 const trainingDbPath = path.join(rootDir, 'progress', 'training-db.json');
+const allowedDsaStatuses = new Set(['not-started', 'in-progress', 'solved', 'review', 'mastered']);
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -180,6 +181,71 @@ function sanitizeDsaQuestionState(payload) {
     confidence: Math.max(0, Math.min(5, Math.round(Number(payload.confidence) || 0))),
     expanded: Boolean(payload.expanded),
   };
+}
+
+function getDefaultQuestionState() {
+  return {
+    status: 'not-started',
+    notes: '',
+    patternNote: '',
+    mistakeNote: '',
+    lastTouched: '',
+    nextReviewAt: '',
+    attempts: 0,
+    confidence: 0,
+    expanded: false,
+  };
+}
+
+function normalizeExistingDsaQuestionState(payload) {
+  const current = payload && typeof payload === 'object' ? payload : {};
+  const status = String(current.status || 'not-started');
+  return {
+    ...getDefaultQuestionState(),
+    ...current,
+    status: allowedDsaStatuses.has(status) ? status : 'not-started',
+    notes: String(current.notes || '').slice(0, 2000),
+    patternNote: String(current.patternNote || '').slice(0, 240),
+    mistakeNote: String(current.mistakeNote || '').slice(0, 240),
+    lastTouched: isValidDateKey(current.lastTouched) ? current.lastTouched : '',
+    nextReviewAt: isValidDateKey(current.nextReviewAt) ? current.nextReviewAt : '',
+    attempts: Math.max(0, Math.min(999, Math.round(Number(current.attempts) || 0))),
+    confidence: Math.max(0, Math.min(5, Math.round(Number(current.confidence) || 0))),
+    expanded: Boolean(current.expanded),
+  };
+}
+
+function calculateReviewDateFromToday(daysOut) {
+  const next = new Date();
+  next.setDate(next.getDate() + Math.max(1, Number(daysOut) || 2));
+  return next.toISOString().slice(0, 10);
+}
+
+function applySubmissionToDsaState(question, result) {
+  const dsaState = readJson(dsaStatePath, {});
+  const key = String(question.slug || question.id || '').trim();
+  if (!key) return null;
+
+  const trainingDb = readJson(trainingDbPath, {
+    masteryRules: { reviewUrgencyDays: 2 },
+  });
+  const current = normalizeExistingDsaQuestionState(dsaState[key]);
+  const nextStatus = result.passedAll
+    ? (current.status === 'mastered' ? 'mastered' : 'solved')
+    : (current.status === 'not-started' ? 'in-progress' : current.status);
+
+  dsaState[key] = {
+    ...current,
+    status: nextStatus,
+    lastTouched: todayKey(),
+    nextReviewAt: result.passedAll
+      ? calculateReviewDateFromToday(trainingDb.masteryRules?.reviewUrgencyDays || 2)
+      : current.nextReviewAt,
+    attempts: Math.max(current.attempts, 0) + 1,
+  };
+
+  writeJson(dsaStatePath, dsaState);
+  return dsaState[key];
 }
 
 function sanitizeDsaState(payload) {
@@ -527,9 +593,11 @@ const server = http.createServer((req, res) => {
         const result = runQuestionTests(question, payload);
         const shouldPersist = allowWrites && payload.persist !== false;
         const savedAttempt = shouldPersist ? persistSubmission(result) : null;
+        const updatedQuestionState = shouldPersist ? applySubmissionToDsaState(question, result) : null;
         sendJson(res, 200, {
           ...result,
           savedAttempt,
+          updatedQuestionState,
           persisted: Boolean(savedAttempt),
         });
       })

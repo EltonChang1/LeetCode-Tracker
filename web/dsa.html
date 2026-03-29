@@ -261,6 +261,80 @@
         </article>
       </section>
 
+      <section class="layout-two solved-shell">
+        <article class="card practice-card">
+          <div class="section-heading">
+            <div>
+              <h2>Solved Problems Database</h2>
+              <p class="muted">Every saved successful submission becomes a clickable record with your latest stored result.</p>
+            </div>
+          </div>
+          <div class="stats-grid practice-analytics-grid">
+            <article class="stat-mini">
+              <h3>Solved Problems</h3>
+              <p id="solvedCountStat">0</p>
+            </article>
+            <article class="stat-mini">
+              <h3>Saved Attempts</h3>
+              <p id="savedAttemptsStat">0</p>
+            </article>
+            <article class="stat-mini">
+              <h3>Latest Solve</h3>
+              <p id="latestSolvedStat">-</p>
+            </article>
+            <article class="stat-mini">
+              <h3>Database Mode</h3>
+              <p id="databaseModeStat">Local</p>
+            </article>
+          </div>
+          <p id="solvedDatabaseLine" class="muted">Loading solved problems...</p>
+          <div id="solvedProblemsList" class="solved-list"></div>
+        </article>
+
+        <article class="card practice-card">
+          <div class="section-heading">
+            <div>
+              <h2>Stored Result</h2>
+              <p class="muted">Open any solved problem to inspect the saved code and test output from your database.</p>
+            </div>
+          </div>
+
+          <div id="solvedDetailEmpty" class="practice-empty">
+            <p class="muted">Select a solved problem to inspect its latest saved result.</p>
+          </div>
+
+          <div id="solvedProblemDetail" class="practice-arena hidden">
+            <div class="practice-meta">
+              <div>
+                <p id="solvedDetailKicker" class="daily-kicker">Saved Result</p>
+                <h3 id="solvedDetailTitle">-</h3>
+              </div>
+              <div class="chips" id="solvedDetailTags"></div>
+            </div>
+
+            <p id="solvedDetailSummary" class="muted">-</p>
+            <div class="actions">
+              <button id="openSolvedProblemBtn" class="btn small ghost" type="button">Open In Practice Arena</button>
+            </div>
+
+            <div class="lesson-card">
+              <h4>Saved Code</h4>
+              <pre id="solvedDetailCode" class="stored-code">No saved code yet.</pre>
+            </div>
+
+            <div>
+              <h4 class="dsa-results-heading">Saved Test Results</h4>
+              <div id="solvedDetailResults" class="practice-results"></div>
+            </div>
+
+            <div>
+              <h4 class="dsa-results-heading">Attempt Timeline</h4>
+              <ul id="solvedDetailHistory" class="recent"></ul>
+            </div>
+          </div>
+        </article>
+      </section>
+
       <section>
         <div class="section-heading dsa-results-heading">
           <div>

@@ -162,6 +162,7 @@ let practiceDrafts = loadPracticeDrafts();
 let currentPracticeQuestion = null;
 let latestPracticeResult = null;
 let practiceMessage = '';
+let selectedSolvedProblemSlug = '';
 let trainingDb = {
   owner: { name: 'Elton', role: 'Future LeetCode Master' },
   goal: { title: 'Become a LeetCode master in DSA', focus: 'Train pattern recognition, implementation speed, and review discipline.' },
@@ -853,11 +854,94 @@ function getQuestionSubmissionSummary(questionSlug) {
   };
 }
 
+function findQuestionMeta(questionSlug) {
+  return findRunnableQuestion(questionSlug)
+    || dsaQuestions.find((question) => question.id === questionSlug || question.slug === questionSlug)
+    || null;
+}
+
+function formatTimestamp(value, fallback = '-') {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed.toLocaleString();
+}
+
+function getSolvedProblemRecords() {
+  const grouped = new Map();
+
+  submissionStore.forEach((submission) => {
+    const slug = String(submission.questionSlug || '').trim();
+    if (!slug) return;
+
+    if (!grouped.has(slug)) {
+      grouped.set(slug, {
+        attempts: [],
+        passingAttempts: [],
+      });
+    }
+
+    const current = grouped.get(slug);
+    current.attempts.push(submission);
+    if (submission.passedAll) current.passingAttempts.push(submission);
+  });
+
+  return [...grouped.entries()]
+    .filter(([, item]) => item.passingAttempts.length > 0)
+    .map(([slug, item]) => {
+      const question = findQuestionMeta(slug);
+      return {
+        slug,
+        question,
+        attempts: item.attempts,
+        solveCount: item.passingAttempts.length,
+        latestAttempt: item.attempts[0] || null,
+        latestPassingAttempt: item.passingAttempts[0] || null,
+        firstSolvedAt: item.passingAttempts[item.passingAttempts.length - 1]?.createdAt || '',
+        latestSolvedAt: item.passingAttempts[0]?.createdAt || '',
+        state: getQuestionState(slug),
+      };
+    })
+    .sort((a, b) => new Date(b.latestSolvedAt || 0) - new Date(a.latestSolvedAt || 0));
+}
+
+function ensureSelectedSolvedProblem(records = getSolvedProblemRecords()) {
+  if (selectedSolvedProblemSlug) {
+    const selectedRecord = records.find((record) => record.slug === selectedSolvedProblemSlug);
+    if (selectedRecord) return selectedRecord;
+  }
+
+  if (currentPracticeQuestion) {
+    const activeRecord = records.find((record) => record.slug === currentPracticeQuestion.slug);
+    if (activeRecord) {
+      selectedSolvedProblemSlug = activeRecord.slug;
+      return activeRecord;
+    }
+  }
+
+  selectedSolvedProblemSlug = records[0]?.slug || '';
+  return records[0] || null;
+}
+
+function renderStoredResultCards(results) {
+  const safe = Array.isArray(results) ? results : [];
+  return safe.length
+    ? safe.map((result) => `
+      <article class="result-card ${result.passed ? 'pass' : 'fail'}">
+        <h4>${result.label} · ${result.passed ? 'Pass' : 'Fail'}</h4>
+        <pre>Args: ${escapeHtml(formatValue(result.args))}\nExpected: ${escapeHtml(formatValue(result.expected))}\nActual: ${escapeHtml(formatValue(result.actual))}${result.error ? `\nError: ${escapeHtml(result.error)}` : ''}</pre>
+      </article>
+    `).join('')
+    : '<article class="result-card"><h4>No Stored Results</h4><pre>No saved test output for this problem yet.</pre></article>';
+}
+
 function setPracticeQuestion(questionId, options = {}) {
   const question = findRunnableQuestion(questionId);
   currentPracticeQuestion = question;
   latestPracticeResult = null;
   practiceMessage = '';
+  if (question && getSolvedProblemRecords().some((record) => record.slug === question.slug)) {
+    selectedSolvedProblemSlug = question.slug;
+  }
 
   const emptyState = document.getElementById('practiceEmptyState');
   const arena = document.getElementById('practiceArena');
@@ -885,6 +969,7 @@ function setPracticeQuestion(questionId, options = {}) {
 
   renderPracticeArena();
   renderSubmissionAnalytics();
+  renderSolvedProblemsDatabase();
 }
 
 function renderPracticeArena() {
@@ -952,12 +1037,7 @@ function renderPracticeArena() {
 
   if (results) {
     const resultSource = latestPracticeResult?.results || [];
-    results.innerHTML = resultSource.map((result) => `
-      <article class="result-card ${result.passed ? 'pass' : 'fail'}">
-        <h4>${result.label} · ${result.passed ? 'Pass' : 'Fail'}</h4>
-        <pre>Args: ${formatValue(result.args)}\nExpected: ${formatValue(result.expected)}\nActual: ${formatValue(result.actual)}${result.error ? `\nError: ${result.error}` : ''}</pre>
-      </article>
-    `).join('');
+    results.innerHTML = renderStoredResultCards(resultSource);
   }
 }
 
@@ -993,6 +1073,93 @@ function renderSubmissionAnalytics() {
   }
 }
 
+function renderSolvedProblemsDatabase() {
+  const solvedCountStat = document.getElementById('solvedCountStat');
+  const savedAttemptsStat = document.getElementById('savedAttemptsStat');
+  const latestSolvedStat = document.getElementById('latestSolvedStat');
+  const databaseModeStat = document.getElementById('databaseModeStat');
+  const solvedDatabaseLine = document.getElementById('solvedDatabaseLine');
+  const solvedProblemsList = document.getElementById('solvedProblemsList');
+  const solvedDetailEmpty = document.getElementById('solvedDetailEmpty');
+  const solvedProblemDetail = document.getElementById('solvedProblemDetail');
+  const solvedDetailKicker = document.getElementById('solvedDetailKicker');
+  const solvedDetailTitle = document.getElementById('solvedDetailTitle');
+  const solvedDetailTags = document.getElementById('solvedDetailTags');
+  const solvedDetailSummary = document.getElementById('solvedDetailSummary');
+  const solvedDetailCode = document.getElementById('solvedDetailCode');
+  const solvedDetailResults = document.getElementById('solvedDetailResults');
+  const solvedDetailHistory = document.getElementById('solvedDetailHistory');
+
+  const records = getSolvedProblemRecords();
+  const selectedRecord = ensureSelectedSolvedProblem(records);
+
+  if (solvedCountStat) solvedCountStat.textContent = String(records.length);
+  if (savedAttemptsStat) savedAttemptsStat.textContent = String(submissionStore.length);
+  if (latestSolvedStat) latestSolvedStat.textContent = formatTimestamp(records[0]?.latestSolvedAt, 'None');
+  if (databaseModeStat) databaseModeStat.textContent = serverAllowWrites ? 'Server' : 'Local';
+
+  if (solvedDatabaseLine) {
+    solvedDatabaseLine.textContent = records.length
+      ? `${records.length} solved problem${records.length === 1 ? '' : 's'} stored${serverAllowWrites ? ' in your local JSON database.' : ' in this browser. Start with npm run lc:web:write for file-backed storage.'}`
+      : `No solved problems stored yet.${serverAllowWrites ? ' Your first passing submission will appear here automatically.' : ' Run the write-enabled server if you want file-backed database storage.'}`;
+  }
+
+  if (solvedProblemsList) {
+    solvedProblemsList.innerHTML = records.length
+      ? records.map((record) => {
+        const question = record.question || {};
+        return `
+          <button class="solved-item ${record.slug === selectedSolvedProblemSlug ? 'active' : ''}" type="button" data-solved-problem="${record.slug}">
+            <div class="solved-item-top">
+              <div class="solved-item-meta">
+                <h3>${escapeHtml(question.title || titleCase(record.slug))}</h3>
+                <p class="muted">${escapeHtml(question.topic || 'Practice')} · ${titleCase(question.difficulty || 'saved')}</p>
+              </div>
+              <span class="solved-item-time">${formatTimestamp(record.latestSolvedAt, 'Saved')}</span>
+            </div>
+            <p class="muted">${record.solveCount} solved run${record.solveCount === 1 ? '' : 's'} · ${record.attempts.length} total attempt${record.attempts.length === 1 ? '' : 's'} · latest ${record.latestPassingAttempt?.passedCount || 0}/${record.latestPassingAttempt?.totalTests || 0} tests</p>
+          </button>
+        `;
+      }).join('')
+      : '<div class="practice-empty"><p class="muted">Solved questions will appear here after you submit a passing solution.</p></div>';
+  }
+
+  if (!selectedRecord) {
+    if (solvedDetailEmpty) solvedDetailEmpty.classList.remove('hidden');
+    if (solvedProblemDetail) solvedProblemDetail.classList.add('hidden');
+    return;
+  }
+
+  const question = selectedRecord.question || {};
+  const latestPassingAttempt = selectedRecord.latestPassingAttempt || selectedRecord.latestAttempt || null;
+
+  if (solvedDetailEmpty) solvedDetailEmpty.classList.add('hidden');
+  if (solvedProblemDetail) solvedProblemDetail.classList.remove('hidden');
+  if (solvedDetailKicker) {
+    solvedDetailKicker.textContent = `${titleCase(question.difficulty || 'saved')} · ${selectedRecord.slug}`;
+  }
+  if (solvedDetailTitle) solvedDetailTitle.textContent = question.title || titleCase(selectedRecord.slug);
+  if (solvedDetailTags) {
+    solvedDetailTags.innerHTML = (question.tags || []).map((tag) => `<span class="chip">${escapeHtml(tag)}</span>`).join('');
+  }
+  if (solvedDetailSummary) {
+    solvedDetailSummary.textContent = `${selectedRecord.solveCount} saved solve${selectedRecord.solveCount === 1 ? '' : 's'} · ${selectedRecord.attempts.length} total attempt${selectedRecord.attempts.length === 1 ? '' : 's'} · latest solve ${formatTimestamp(selectedRecord.latestSolvedAt, 'unknown')}`;
+  }
+  if (solvedDetailCode) {
+    solvedDetailCode.textContent = latestPassingAttempt?.code || 'No saved code yet.';
+  }
+  if (solvedDetailResults) {
+    solvedDetailResults.innerHTML = renderStoredResultCards(latestPassingAttempt?.results || []);
+  }
+  if (solvedDetailHistory) {
+    solvedDetailHistory.innerHTML = selectedRecord.attempts.length
+      ? selectedRecord.attempts.slice(0, 8).map((attempt) => `
+        <li>${formatTimestamp(attempt.createdAt, 'Unknown time')} · ${attempt.passedCount}/${attempt.totalTests} tests · ${attempt.passedAll ? 'passed' : 'needs work'}${Number.isFinite(attempt.durationMs) ? ` · ${attempt.durationMs}ms` : ''}</li>
+      `).join('')
+      : '<li>No saved attempts for this problem yet.</li>';
+  }
+}
+
 async function refreshPracticeData() {
   try {
     questionCatalog = await apiRequest('/api/questions', 'GET');
@@ -1015,6 +1182,7 @@ async function performPracticeSubmission({ persist }) {
   if (!currentPracticeQuestion) return;
   const codeInput = document.getElementById('practiceCode');
   const code = codeInput?.value || '';
+  const priorState = getQuestionState(currentPracticeQuestion.slug);
   practiceDrafts[currentPracticeQuestion.slug] = code;
   savePracticeDrafts();
 
@@ -1043,8 +1211,24 @@ async function performPracticeSubmission({ persist }) {
     await refreshPracticeData();
   }
 
-  renderPracticeArena();
-  renderSubmissionAnalytics();
+  const nextStatus = result.passedAll
+    ? (priorState.status === 'mastered' ? 'mastered' : 'solved')
+    : (priorState.status === 'not-started' ? 'in-progress' : priorState.status);
+
+  if (result.passedAll) {
+    selectedSolvedProblemSlug = currentPracticeQuestion.slug;
+    practiceMessage = result.persisted
+      ? 'Solved and saved to your database.'
+      : 'Solved and saved locally in this browser.';
+  }
+
+  updateQuestionState(currentPracticeQuestion.slug, {
+    status: nextStatus,
+    attempts: priorState.attempts + 1,
+    lastTouched: todayKey(),
+    nextReviewAt: result.updatedQuestionState?.nextReviewAt || priorState.nextReviewAt,
+    expanded: true,
+  });
 }
 
 function renderCoachInsights(questions) {
@@ -1340,6 +1524,12 @@ function attachEventHandlers() {
 
   document.getElementById('dailySet').addEventListener('click', handleDelegatedClick);
   document.getElementById('dsaQuestions').addEventListener('click', handleDelegatedClick);
+  document.getElementById('solvedProblemsList').addEventListener('click', (event) => {
+    const solvedTarget = event.target.closest('[data-solved-problem]');
+    if (!solvedTarget) return;
+    selectedSolvedProblemSlug = solvedTarget.getAttribute('data-solved-problem');
+    renderSolvedProblemsDatabase();
+  });
   document.getElementById('dsaQuestions').addEventListener('change', handleDelegatedChange);
   document.getElementById('dsaQuestions').addEventListener('input', handleDelegatedInput);
   document.getElementById('dsaSyncToggle').addEventListener('change', async (event) => {
@@ -1385,6 +1575,11 @@ function attachEventHandlers() {
     if (!currentPracticeQuestion) return;
     practiceDrafts[currentPracticeQuestion.slug] = event.target.value;
     savePracticeDrafts();
+  });
+  document.getElementById('openSolvedProblemBtn').addEventListener('click', () => {
+    if (!selectedSolvedProblemSlug) return;
+    setPracticeQuestion(selectedSolvedProblemSlug);
+    document.getElementById('practiceArena')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
 
@@ -1541,6 +1736,7 @@ function render() {
   renderTopicProgress(questions);
   renderPracticeArena();
   renderSubmissionAnalytics();
+  renderSolvedProblemsDatabase();
   renderBoard(questions, filters);
 }
 
