@@ -2,6 +2,7 @@ const DSA_STORAGE_KEY = 'lcq-dsa-state-v2';
 const DSA_SYNC_MODE_STORAGE_KEY = 'lcq-dsa-sync-mode';
 const PRACTICE_SUBMISSIONS_STORAGE_KEY = 'lcq-practice-submissions-v1';
 const PRACTICE_DRAFT_STORAGE_KEY = 'lcq-practice-drafts-v1';
+const PRACTICE_LANGUAGE_STORAGE_KEY = 'lcq-practice-language-v1';
 const DAILY_SET_SIZE = 3;
 const SESSION_STEPS = [
   { id: 'read', label: 'Read prompt', helper: 'Restate the goal and scan constraints before touching code.' },
@@ -163,6 +164,7 @@ let currentPracticeQuestion = null;
 let latestPracticeResult = null;
 let practiceMessage = '';
 let selectedSolvedProblemSlug = '';
+let currentPracticeLanguage = loadPracticeLanguage();
 let trainingDb = {
   owner: { name: 'Elton', role: 'Future LeetCode Master' },
   goal: { title: 'Become a LeetCode master in DSA', focus: 'Train pattern recognition, implementation speed, and review discipline.' },
@@ -218,6 +220,114 @@ function loadPracticeDrafts() {
 
 function savePracticeDrafts() {
   localStorage.setItem(PRACTICE_DRAFT_STORAGE_KEY, JSON.stringify(practiceDrafts));
+}
+
+function normalizePracticeLanguage(value) {
+  const language = String(value || 'js').toLowerCase();
+  if (language === 'python') return 'py';
+  if (language === 'c++') return 'cpp';
+  return ['js', 'py', 'cpp'].includes(language) ? language : 'js';
+}
+
+function loadPracticeLanguage() {
+  return normalizePracticeLanguage(localStorage.getItem(PRACTICE_LANGUAGE_STORAGE_KEY) || 'js');
+}
+
+function savePracticeLanguage(language) {
+  currentPracticeLanguage = normalizePracticeLanguage(language);
+  localStorage.setItem(PRACTICE_LANGUAGE_STORAGE_KEY, currentPracticeLanguage);
+}
+
+function getPracticeDraftKey(questionSlug, language = currentPracticeLanguage) {
+  return `${questionSlug}::${normalizePracticeLanguage(language)}`;
+}
+
+function getLanguageLabel(language = currentPracticeLanguage) {
+  return {
+    js: 'JavaScript',
+    py: 'Python',
+    cpp: 'C++',
+  }[normalizePracticeLanguage(language)] || 'JavaScript';
+}
+
+function inferArgumentNames(question) {
+  const count = Math.max(
+    1,
+    ...(Array.isArray(question?.testCases)
+      ? question.testCases.map((testCase) => Array.isArray(testCase.args) ? testCase.args.length : 0)
+      : [0])
+  );
+  return Array.from({ length: count }, (_, index) => `arg${index + 1}`);
+}
+
+function inferPythonPlaceholder(expected) {
+  if (Array.isArray(expected)) return '[]';
+  if (typeof expected === 'string') return "''";
+  if (typeof expected === 'boolean') return 'False';
+  if (typeof expected === 'number') return '0';
+  return 'None';
+}
+
+function getStarterCodeForQuestion(question, language = currentPracticeLanguage) {
+  const normalizedLanguage = normalizePracticeLanguage(language);
+  const starterCode = question?.starterCode || {};
+  if (starterCode[normalizedLanguage]) return starterCode[normalizedLanguage];
+  if (normalizedLanguage === 'js') return starterCode.js || '';
+
+  const functionName = question?.functionName || 'solution';
+  const argNames = inferArgumentNames(question);
+  const expected = Array.isArray(question?.testCases) && question.testCases.length ? question.testCases[0].expected : null;
+
+  if (normalizedLanguage === 'py') {
+    return [
+      `def ${functionName}(${argNames.join(', ')}):`,
+      '    # Write your solution here.',
+      `    return ${inferPythonPlaceholder(expected)}`,
+    ].join('\n');
+  }
+
+  return [
+    '#include <bits/stdc++.h>',
+    'using namespace std;',
+    '',
+    `auto ${functionName}(${argNames.map((name) => `auto ${name}`).join(', ')}) {`,
+    '    // Write your solution here.',
+    '    return 0;',
+    '}',
+  ].join('\n');
+}
+
+function ensurePracticeLanguageControl() {
+  const codeInput = document.getElementById('practiceCode');
+  if (!codeInput) return;
+
+  const editorField = codeInput.closest('.filter-field');
+  if (!editorField) return;
+
+  let editorLabel = document.getElementById('practiceLanguageLabel');
+  if (!editorLabel) {
+    editorLabel = editorField.querySelector('span');
+    if (editorLabel) editorLabel.id = 'practiceLanguageLabel';
+  }
+  if (editorLabel) {
+    editorLabel.textContent = `${getLanguageLabel()} Solution`;
+  }
+
+  if (document.getElementById('practiceLanguage')) return;
+
+  const languageField = document.createElement('label');
+  languageField.className = 'filter-field';
+  languageField.innerHTML = `
+    <span>Language</span>
+    <select id="practiceLanguage" class="text-input">
+      <option value="js">JavaScript</option>
+      <option value="py">Python</option>
+      <option value="cpp">C++</option>
+    </select>
+  `;
+
+  editorField.parentNode.insertBefore(languageField, editorField);
+  languageField.querySelector('#practiceLanguage').value = currentPracticeLanguage;
 }
 
 async function apiRequest(url, method = 'GET', body) {
@@ -844,8 +954,12 @@ function formatValue(value) {
   return JSON.stringify(value);
 }
 
-function getQuestionSubmissionSummary(questionSlug) {
-  const attempts = submissionStore.filter((submission) => submission.questionSlug === questionSlug);
+function getQuestionSubmissionSummary(questionSlug, language = '') {
+  const normalizedLanguage = language ? normalizePracticeLanguage(language) : '';
+  const attempts = submissionStore.filter((submission) => (
+    submission.questionSlug === questionSlug
+      && (!normalizedLanguage || normalizePracticeLanguage(submission.language) === normalizedLanguage)
+  ));
   const solved = attempts.filter((submission) => submission.passedAll).length;
   return {
     attempts,
@@ -959,9 +1073,10 @@ function setPracticeQuestion(questionId, options = {}) {
   if (arena) arena.classList.remove('hidden');
   if (availability) availability.textContent = 'Runnable';
 
-  const latestSubmission = getQuestionSubmissionSummary(question.slug).latest;
-  const existingDraft = practiceDrafts[question.slug];
-  const starter = question.starterCode?.js || '';
+  const latestSubmission = getQuestionSubmissionSummary(question.slug, currentPracticeLanguage).latest;
+  const draftKey = getPracticeDraftKey(question.slug, currentPracticeLanguage);
+  const existingDraft = practiceDrafts[draftKey];
+  const starter = getStarterCodeForQuestion(question, currentPracticeLanguage);
   const shouldForceStarter = Boolean(options.forceStarter);
   const code = shouldForceStarter ? starter : (existingDraft || latestSubmission?.code || starter);
   const codeInput = document.getElementById('practiceCode');
@@ -991,11 +1106,15 @@ function renderPracticeArena() {
     return;
   }
 
-  const summary = getQuestionSubmissionSummary(currentPracticeQuestion.slug);
+  const summary = getQuestionSubmissionSummary(currentPracticeQuestion.slug, currentPracticeLanguage);
   if (subtitle) {
     subtitle.textContent = summary.latest
-      ? `Latest browser result: ${summary.latest.passedCount}/${summary.latest.totalTests} tests passed${summary.latest.createdAt ? ` · ${new Date(summary.latest.createdAt).toLocaleString()}` : ''}.`
-      : 'Write your solution, run the tests, then submit the attempt to save analytics.';
+      ? `Latest browser result: ${summary.latest.passedCount}/${summary.latest.totalTests} tests passed${summary.latest.createdAt ? ` · ${new Date(summary.latest.createdAt).toLocaleString()}` : ''} · ${getLanguageLabel(summary.latest.language)}.`
+      : `Write your ${getLanguageLabel().toLowerCase()} solution, run the tests, then submit the attempt to save analytics.`;
+  }
+  const languageLabel = document.getElementById('practiceLanguageLabel');
+  if (languageLabel) {
+    languageLabel.textContent = `${getLanguageLabel()} Solution`;
   }
   if (title) title.textContent = currentPracticeQuestion.title;
   if (kicker) kicker.textContent = `${titleCase(currentPracticeQuestion.difficulty)} · ${currentPracticeQuestion.slug}`;
@@ -1051,7 +1170,9 @@ function renderSubmissionAnalytics() {
 
   const totalAttempts = submissionStore.length;
   const totalPassed = submissionStore.filter((submission) => submission.passedAll).length;
-  const activeSummary = currentPracticeQuestion ? getQuestionSubmissionSummary(currentPracticeQuestion.slug) : { attempts: [], solved: 0, latest: null };
+  const activeSummary = currentPracticeQuestion
+    ? getQuestionSubmissionSummary(currentPracticeQuestion.slug, currentPracticeLanguage)
+    : { attempts: [], solved: 0, latest: null };
 
   if (attemptsStat) attemptsStat.textContent = String(totalAttempts);
   if (passRateStat) passRateStat.textContent = `${totalAttempts ? Math.round((totalPassed / totalAttempts) * 100) : 0}%`;
@@ -1183,11 +1304,11 @@ async function performPracticeSubmission({ persist }) {
   const codeInput = document.getElementById('practiceCode');
   const code = codeInput?.value || '';
   const priorState = getQuestionState(currentPracticeQuestion.slug);
-  practiceDrafts[currentPracticeQuestion.slug] = code;
+  practiceDrafts[getPracticeDraftKey(currentPracticeQuestion.slug, currentPracticeLanguage)] = code;
   savePracticeDrafts();
 
   const result = await apiRequest(`/api/questions/${currentPracticeQuestion.slug}/submit`, 'POST', {
-    language: 'js',
+    language: currentPracticeLanguage,
     code,
     persist,
   });
@@ -1553,6 +1674,7 @@ function attachEventHandlers() {
     if (!currentPracticeQuestion) return;
     setPracticeQuestion(currentPracticeQuestion.slug, { forceStarter: true });
   });
+  document.getElementById('practiceLanguage')?.addEventListener('change', () => {});
   document.getElementById('runTestsBtn').addEventListener('click', async () => {
     try {
       await performPracticeSubmission({ persist: false });
@@ -1573,8 +1695,16 @@ function attachEventHandlers() {
   });
   document.getElementById('practiceCode').addEventListener('input', (event) => {
     if (!currentPracticeQuestion) return;
-    practiceDrafts[currentPracticeQuestion.slug] = event.target.value;
+    practiceDrafts[getPracticeDraftKey(currentPracticeQuestion.slug, currentPracticeLanguage)] = event.target.value;
     savePracticeDrafts();
+  });
+  document.getElementById('practiceLanguage').addEventListener('change', (event) => {
+    savePracticeLanguage(event.target.value);
+    if (currentPracticeQuestion) {
+      setPracticeQuestion(currentPracticeQuestion.slug);
+    } else {
+      renderPracticeArena();
+    }
   });
   document.getElementById('openSolvedProblemBtn').addEventListener('click', () => {
     if (!selectedSolvedProblemSlug) return;
@@ -1741,6 +1871,7 @@ function render() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  ensurePracticeLanguageControl();
   populateTopicFilter();
   attachEventHandlers();
   void bootstrap();
