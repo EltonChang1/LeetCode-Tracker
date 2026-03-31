@@ -164,7 +164,7 @@ let currentPracticeQuestion = null;
 let latestPracticeResult = null;
 let practiceMessage = '';
 let selectedSolvedProblemSlug = '';
-let currentPracticeLanguage = loadPracticeLanguage();
+let currentPracticeLanguage = 'py';
 let trainingDb = {
   owner: { name: 'Elton', role: 'Future LeetCode Master' },
   goal: { title: 'Become a LeetCode master in DSA', focus: 'Train pattern recognition, implementation speed, and review discipline.' },
@@ -230,12 +230,12 @@ function normalizePracticeLanguage(value) {
 }
 
 function loadPracticeLanguage() {
-  return normalizePracticeLanguage(localStorage.getItem(PRACTICE_LANGUAGE_STORAGE_KEY) || 'js');
+  return 'py';
 }
 
 function savePracticeLanguage(language) {
-  currentPracticeLanguage = normalizePracticeLanguage(language);
-  localStorage.setItem(PRACTICE_LANGUAGE_STORAGE_KEY, currentPracticeLanguage);
+  currentPracticeLanguage = 'py';
+  localStorage.setItem(PRACTICE_LANGUAGE_STORAGE_KEY, 'py');
 }
 
 function getPracticeDraftKey(questionSlug, language = currentPracticeLanguage) {
@@ -310,24 +310,8 @@ function ensurePracticeLanguageControl() {
     if (editorLabel) editorLabel.id = 'practiceLanguageLabel';
   }
   if (editorLabel) {
-    editorLabel.textContent = `${getLanguageLabel()} Solution`;
+    editorLabel.textContent = 'Python Solution';
   }
-
-  if (document.getElementById('practiceLanguage')) return;
-
-  const languageField = document.createElement('label');
-  languageField.className = 'filter-field';
-  languageField.innerHTML = `
-    <span>Language</span>
-    <select id="practiceLanguage" class="text-input">
-      <option value="js">JavaScript</option>
-      <option value="py">Python</option>
-      <option value="cpp">C++</option>
-    </select>
-  `;
-
-  editorField.parentNode.insertBefore(languageField, editorField);
-  languageField.querySelector('#practiceLanguage').value = currentPracticeLanguage;
 }
 
 async function apiRequest(url, method = 'GET', body) {
@@ -1674,7 +1658,6 @@ function attachEventHandlers() {
     if (!currentPracticeQuestion) return;
     setPracticeQuestion(currentPracticeQuestion.slug, { forceStarter: true });
   });
-  document.getElementById('practiceLanguage')?.addEventListener('change', () => {});
   document.getElementById('runTestsBtn').addEventListener('click', async () => {
     try {
       await performPracticeSubmission({ persist: false });
@@ -1697,14 +1680,6 @@ function attachEventHandlers() {
     if (!currentPracticeQuestion) return;
     practiceDrafts[getPracticeDraftKey(currentPracticeQuestion.slug, currentPracticeLanguage)] = event.target.value;
     savePracticeDrafts();
-  });
-  document.getElementById('practiceLanguage').addEventListener('change', (event) => {
-    savePracticeLanguage(event.target.value);
-    if (currentPracticeQuestion) {
-      setPracticeQuestion(currentPracticeQuestion.slug);
-    } else {
-      renderPracticeArena();
-    }
   });
   document.getElementById('openSolvedProblemBtn').addEventListener('click', () => {
     if (!selectedSolvedProblemSlug) return;
